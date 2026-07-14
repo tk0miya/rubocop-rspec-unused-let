@@ -1,0 +1,27 @@
+# Hand-written stubs for rubocop-rspec, which ships no RBS signatures and is
+# not available in the RBS collection. Only the surface used by this gem's cop
+# is declared.
+
+module RuboCop
+  module Cop
+    module RSpec
+      class Base
+        def cop_config: () -> Hash[String, untyped]
+
+        def add_offense: (untyped node, ?message: String) -> void
+
+        def self.def_node_matcher: (Symbol, String) -> void
+
+        def self.def_node_search: (Symbol, String) -> void
+      end
+    end
+  end
+
+  module RSpec
+    class ExampleGroup
+      def initialize: (RuboCop::AST::Node node) -> void
+
+      def lets: () -> Array[RuboCop::AST::Node]
+    end
+  end
+end

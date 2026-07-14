@@ -1,43 +1,117 @@
-# Rubocop::Rspec::Unused::Let
+# rubocop-rspec-unused-let
 
-TODO: Delete this and the text below, and describe your gem
+A [RuboCop](https://github.com/rubocop/rubocop) extension that detects
+unreferenced RSpec `let` definitions.
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/rubocop/rspec/unused/let`. To experiment with that code, run `bin/console` for an interactive prompt.
+It adds a single cop, `RSpec/UnusedLet`, which flags `let` (and optionally
+`let!`) definitions whose name is never referenced within their scope. The cop
+is deliberately conservative around `shared_examples` so that it avoids false
+positives that a naive implementation would produce.
 
 ## Installation
 
-TODO: Replace `UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG` with your gem name right after releasing it to RubyGems.org. Please do not do it earlier due to security reasons. Alternatively, replace this section with instructions to install your gem from git if you don't plan to release to RubyGems.org.
+Add the gem to your `Gemfile`:
 
-Install the gem and add to the application's Gemfile by executing:
-
-```bash
-bundle add UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
+```ruby
+gem "rubocop-rspec-unused-let", require: false
 ```
 
-If bundler is not being used to manage dependencies, install the gem by executing:
-
-```bash
-gem install UPDATE_WITH_YOUR_GEM_NAME_IMMEDIATELY_AFTER_RELEASE_TO_RUBYGEMS_ORG
-```
+This gem builds on [rubocop-rspec](https://github.com/rubocop/rubocop-rspec),
+so make sure that is available too.
 
 ## Usage
 
-TODO: Write usage instructions here
+Enable both plugins in your `.rubocop.yml`:
+
+```yaml
+plugins:
+  - rubocop-rspec
+  - rubocop-rspec-unused-let
+```
+
+## What it detects
+
+```ruby
+# bad
+RSpec.describe Foo do
+  let(:used)   { 1 }
+  let(:unused) { 2 } # never referenced
+
+  it { expect(used).to eq(1) }
+end
+
+# good
+RSpec.describe Foo do
+  let(:used) { 1 }
+
+  it { expect(used).to eq(1) }
+end
+```
+
+A `let` is considered *used* when its name appears as a bare method call
+anywhere in its scope — inside examples, hooks (`before`/`after`/`around`),
+`subject`, other `let` blocks, and nested example groups. Dynamic references
+such as `send(:name)` / `public_send("name")` are also treated as usages.
+
+## How it handles `shared_examples`
+
+Because RuboCop analyzes one file at a time, a `let` can be consumed by a shared
+example block defined in another file. To avoid false positives, the cop stays
+silent whenever it cannot see every possible reference:
+
+- `let` definitions **inside** a `shared_examples` / `shared_context` block are
+  ignored (their consumers are the including groups, which may be external).
+- When an example group's subtree contains a shared example inclusion
+  (`it_behaves_like`, `include_examples`, `include_context`, ...), the `let`
+  definitions **visible at that inclusion point** are ignored. Sibling subtrees
+  that do not include shared examples are still checked.
+
+```ruby
+RSpec.describe Foo do
+  let(:a) { 1 }              # skipped: visible at the inclusion below
+
+  context "with shared" do
+    let(:b) { 2 }            # skipped: same
+    it_behaves_like "something"
+  end
+
+  context "other" do
+    let(:c) { 3 }            # checked: the shared block cannot see `c`
+    it { expect(c).to eq(3) }
+  end
+end
+```
+
+## Configuration
+
+```yaml
+RSpec/UnusedLet:
+  # Whether to also check `let!`. On by default. Since `let!` is sometimes used
+  # purely for its side effects (e.g. `let!(:user) { create(:user) }`), set this
+  # to `false` to opt out.
+  CheckLetBang: true
+```
+
+## Known limitations
+
+- Analysis is limited to a single file; references reachable only across files
+  (e.g. through external shared examples) are intentionally not flagged.
+- `let` definitions in an override chain (redefined in a nested group, or
+  overriding an outer definition) are skipped, since the outer one may be
+  reached through `super`.
 
 ## Development
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
-
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+After checking out the repo, run `bin/setup` to install dependencies. Then run
+`rake spec` to run the tests and `rake rubocop` to lint the gem. `rake` runs
+both.
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/rubocop-rspec-unused-let. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [code of conduct](https://github.com/[USERNAME]/rubocop-rspec-unused-let/blob/main/CODE_OF_CONDUCT.md).
+Bug reports and pull requests are welcome on GitHub at
+https://github.com/tk0miya/rubocop-rspec-unused-let.
 
 ## License
 
-The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
-
-## Code of Conduct
-
-Everyone interacting in the Rubocop::Rspec::Unused::Let project's codebases, issue trackers, chat rooms and mailing lists is expected to follow the [code of conduct](https://github.com/[USERNAME]/rubocop-rspec-unused-let/blob/main/CODE_OF_CONDUCT.md).
+The gem is available as open source under the terms of the
+[MIT License](https://opensource.org/licenses/MIT).

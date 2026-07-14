@@ -1,0 +1,27 @@
+# Generated from lib/rubocop/rspec/unused/let/plugin.rb with RBS::Inline
+
+module Rubocop
+  module Rspec
+    module Unused
+      module Let
+        # A RuboCop plugin (LintRoller) that registers this gem's cops and
+        # default configuration. Referenced from the gemspec via the
+        # `default_lint_roller_plugin` metadata, so users can enable it with:
+        #
+        #   plugins:
+        #     - rubocop-rspec
+        #     - rubocop-rspec-unused-let
+        class Plugin < LintRoller::Plugin
+          # @rbs override
+          def about: ...
+
+          # @rbs override
+          def supported?: ...
+
+          # @rbs override
+          def rules: ...
+        end
+      end
+    end
+  end
+end

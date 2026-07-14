@@ -1,0 +1,9 @@
+---
+RSpec/UnusedLet:
+  Description: Checks for `let` definitions that are never referenced.
+  Enabled: true
+  CheckLetBang: true
+  Include:
+    - "**/*_spec.rb"
+    - "**/spec/**/*"
+  VersionAdded: '1.0.0'
