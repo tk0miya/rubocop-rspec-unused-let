@@ -103,6 +103,17 @@ module RuboCop
         # @rbs name: Symbol | String
         def dynamically_referenced?: (RuboCop::AST::Node group, Symbol | String name) -> bool
 
+        # `let`, `subject`, and hook blocks defined in ancestor groups are
+        # evaluated in the example's scope, so a reference to `name` there
+        # resolves to the definition visible at the running example.
+        #
+        # @rbs group: RuboCop::AST::Node
+        # @rbs name: Symbol | String
+        def referenced_in_ancestor_scope?: (RuboCop::AST::Node group, Symbol | String name) -> bool
+
+        # @rbs group: RuboCop::AST::Node
+        def ancestor_scope_nodes: (RuboCop::AST::Node group) -> Array[RuboCop::AST::Node]
+
         # @rbs group: RuboCop::AST::Node
         # @rbs name: Symbol | String
         def override_chain?: (RuboCop::AST::Node group, Symbol | String name) -> bool

@@ -25,6 +25,14 @@ module RuboCop
       def initialize: (RuboCop::AST::Node node) -> void
 
       def lets: () -> Array[RuboCop::AST::Node]
+
+      def subjects: () -> Array[RuboCop::AST::Node]
+
+      def hooks: () -> Array[RuboCop::RSpec::Hook]
+    end
+
+    class Hook
+      def to_node: () -> RuboCop::AST::Node
     end
   end
 end

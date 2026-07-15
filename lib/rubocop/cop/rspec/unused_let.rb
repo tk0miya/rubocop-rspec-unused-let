@@ -144,7 +144,8 @@ module RuboCop
         # @rbs name: Symbol | String
         def referenced?(group, name) #: bool
           method_called?(group, name.to_sym) ||
-            dynamically_referenced?(group, name)
+            dynamically_referenced?(group, name) ||
+            referenced_in_ancestor_scope?(group, name)
         end
 
         # @rbs group: RuboCop::AST::Node
@@ -157,6 +158,31 @@ module RuboCop
 
             arg = node.first_argument
             arg&.type?(:sym, :str) && arg.value.to_s == target
+          end
+        end
+
+        # `let`, `subject`, and hook blocks defined in ancestor groups are
+        # evaluated in the example's scope, so a reference to `name` there
+        # resolves to the definition visible at the running example.
+        #
+        # @rbs group: RuboCop::AST::Node
+        # @rbs name: Symbol | String
+        def referenced_in_ancestor_scope?(group, name) #: bool
+          ancestor_scope_nodes(group).any? do |scope_node|
+            method_called?(scope_node, name.to_sym) ||
+              dynamically_referenced?(scope_node, name)
+          end
+        end
+
+        # @rbs group: RuboCop::AST::Node
+        def ancestor_scope_nodes(group) #: Array[RuboCop::AST::Node]
+          group.each_ancestor(:block).flat_map do |ancestor|
+            next [] unless spec_group?(ancestor)
+
+            ancestor_group = RuboCop::RSpec::ExampleGroup.new(ancestor)
+            ancestor_group.lets +
+              ancestor_group.subjects +
+              ancestor_group.hooks.map(&:to_node)
           end
         end
 
