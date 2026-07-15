@@ -1,0 +1,11 @@
+# Generated from lib/rubocop/rspec/unused/let/version.rb with RBS::Inline
+
+module Rubocop
+  module Rspec
+    module Unused
+      module Let
+        VERSION: ::String
+      end
+    end
+  end
+end

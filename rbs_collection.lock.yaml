@@ -1,0 +1,192 @@
+---
+path: ".gem_rbs_collection"
+gems:
+- name: ast
+  version: '2.4'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: concurrent-ruby
+  version: '1.1'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: csv
+  version: '3.3'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: diff-lcs
+  version: '1.5'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: ffi
+  version: 1.17.4
+  source:
+    type: rubygems
+- name: fileutils
+  version: '0'
+  source:
+    type: stdlib
+- name: forwardable
+  version: '0'
+  source:
+    type: stdlib
+- name: json
+  version: '0'
+  source:
+    type: stdlib
+- name: language_server-protocol
+  version: 3.17.0.6
+  source:
+    type: rubygems
+- name: lint_roller
+  version: '1.1'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: listen
+  version: '3.9'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: logger
+  version: '1.7'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: monitor
+  version: '0'
+  source:
+    type: stdlib
+- name: optparse
+  version: '0'
+  source:
+    type: stdlib
+- name: parallel
+  version: '1.20'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: parser
+  version: '3.2'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: prism
+  version: 1.9.0
+  source:
+    type: rubygems
+- name: rainbow
+  version: '3.0'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: rake
+  version: '13.0'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: random-formatter
+  version: '0'
+  source:
+    type: stdlib
+- name: rbs
+  version: 4.0.3
+  source:
+    type: rubygems
+- name: rbs-inline
+  version: 0.14.0
+  source:
+    type: rubygems
+- name: rdoc
+  version: '0'
+  source:
+    type: stdlib
+- name: regexp_parser
+  version: '2.8'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: rubocop
+  version: '1.57'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: rubocop-ast
+  version: '1.46'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: ea56a88d1c0ac98e79f8ea5bb19a139da768ba10
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: rubocop-numbered-params
+  version: 1.0.0
+  source:
+    type: rubygems
+- name: rubocop-rbs_inline
+  version: 1.6.0
+  source:
+    type: rubygems
+- name: securerandom
+  version: '0'
+  source:
+    type: stdlib
+- name: stringio
+  version: '0'
+  source:
+    type: stdlib
+- name: strscan
+  version: '0'
+  source:
+    type: stdlib
+- name: tsort
+  version: '0'
+  source:
+    type: stdlib
+- name: uri
+  version: '0'
+  source:
+    type: stdlib
+gemfile_lock_path: Gemfile.lock
