@@ -163,6 +163,48 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         RUBY
       end
 
+      it "in an ancestor let block that runs in the example's scope" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            let(:wrapper) { [inner] }
+
+            context "when nested" do
+              let(:inner) { 1 }
+
+              it { expect(wrapper).to eq([1]) }
+            end
+          end
+        RUBY
+      end
+
+      it "in an ancestor subject block" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            subject { inner + 1 }
+
+            context "when nested" do
+              let(:inner) { 1 }
+
+              it { is_expected.to eq(2) }
+            end
+          end
+        RUBY
+      end
+
+      it "in an ancestor hook block" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            before { inner }
+
+            context "when nested" do
+              let(:inner) { 1 }
+
+              it { expect(true).to be(true) }
+            end
+          end
+        RUBY
+      end
+
       it "through send" do
         expect_no_offenses(<<~RUBY)
           RSpec.describe Foo do
