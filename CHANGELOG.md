@@ -4,6 +4,10 @@
   nested group was only referenced from an ancestor group's `let`,
   `subject`, or hook block. Those ancestor blocks run in the example's
   scope, so their references resolve to the nested definition.
+- Fix a false positive in `RSpec/UnusedLet` when a `let` was only
+  referenced from a plain `def` helper method defined in an ancestor
+  example group. Such helpers become instance methods on the example
+  class and can reference `let` names visible at the example.
 
 ## [1.1.0] - 2026-07-15
 

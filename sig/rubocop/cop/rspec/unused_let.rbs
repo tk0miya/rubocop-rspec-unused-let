@@ -103,9 +103,10 @@ module RuboCop
         # @rbs name: Symbol | String
         def dynamically_referenced?: (RuboCop::AST::Node group, Symbol | String name) -> bool
 
-        # `let`, `subject`, and hook blocks defined in ancestor groups are
-        # evaluated in the example's scope, so a reference to `name` there
-        # resolves to the definition visible at the running example.
+        # `let`, `subject`, and hook blocks — and plain `def` helpers — defined
+        # in ancestor groups are evaluated in the example's scope, so a
+        # reference to `name` there resolves to the definition visible at the
+        # running example.
         #
         # @rbs group: RuboCop::AST::Node
         # @rbs name: Symbol | String
@@ -113,6 +114,14 @@ module RuboCop
 
         # @rbs group: RuboCop::AST::Node
         def ancestor_scope_nodes: (RuboCop::AST::Node group) -> Array[RuboCop::AST::Node]
+
+        # `def foo` written at an example group's level becomes an instance
+        # method on the group's example class, so calls to a `let` from inside
+        # such a helper count as references. Skip `def`s nested inside a
+        # deeper example/shared group — those aren't visible from `ancestor`.
+        #
+        # @rbs ancestor: RuboCop::AST::Node
+        def method_definitions_in: (RuboCop::AST::Node ancestor) -> Array[RuboCop::AST::Node]
 
         # @rbs group: RuboCop::AST::Node
         # @rbs name: Symbol | String
