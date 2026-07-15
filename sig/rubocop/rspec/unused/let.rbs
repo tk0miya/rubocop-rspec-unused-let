@@ -7,9 +7,9 @@ module Rubocop
         class Error < StandardError
         end
 
-        PROJECT_ROOT: untyped
+        PROJECT_ROOT: Pathname
 
-        CONFIG_DEFAULT: untyped
+        CONFIG_DEFAULT: Pathname
       end
     end
   end

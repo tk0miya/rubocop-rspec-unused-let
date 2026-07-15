@@ -13,9 +13,8 @@ module Rubocop
       module Let
         class Error < StandardError; end
 
-        PROJECT_ROOT =
-          Pathname.new(__dir__ || ".").join("../../../..").expand_path.freeze
-        CONFIG_DEFAULT = PROJECT_ROOT.join("config", "default.yml").freeze
+        PROJECT_ROOT = Pathname.new(__dir__ || ".").join("../../../..").expand_path.freeze #: Pathname
+        CONFIG_DEFAULT = PROJECT_ROOT.join("config", "default.yml").freeze #: Pathname
 
         private_constant :PROJECT_ROOT
       end
