@@ -225,6 +225,18 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         RUBY
       end
 
+      it "through hash value omission", :ruby31 do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            let(:value) { 1 }
+
+            before { setup(value:) }
+
+            it { expect(true).to be(true) }
+          end
+        RUBY
+      end
+
       it "with a string name" do
         expect_no_offenses(<<~RUBY)
           RSpec.describe Foo do
