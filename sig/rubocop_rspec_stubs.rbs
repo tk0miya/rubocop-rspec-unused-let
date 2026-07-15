@@ -9,6 +9,9 @@ module RuboCop
         def cop_config: () -> Hash[String, untyped]
 
         def add_offense: (untyped node, ?message: String) -> void
+                       | (untyped node, ?message: String) { (RuboCop::Cop::Corrector) -> void } -> void
+
+        def range_by_whole_lines: (Parser::Source::Range range, ?include_final_newline: bool) -> Parser::Source::Range
 
         def self.def_node_matcher: (Symbol, String) -> void
 

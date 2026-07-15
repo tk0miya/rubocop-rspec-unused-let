@@ -82,6 +82,30 @@ RSpec.describe Foo do
 end
 ```
 
+## Autocorrect
+
+The cop can remove flagged `let` definitions automatically, but the
+correction is marked **unsafe** because a `let!` block may exist for its
+side effects. Run `rubocop --autocorrect-all` (or `-A`) to apply the
+corrections, and review the diff before committing.
+
+```ruby
+# before -A
+RSpec.describe Foo do
+  let(:used)   { 1 }
+  let(:unused) { 2 }
+
+  it { expect(used).to eq(1) }
+end
+
+# after -A
+RSpec.describe Foo do
+  let(:used)   { 1 }
+
+  it { expect(used).to eq(1) }
+end
+```
+
 ## Configuration
 
 ```yaml
