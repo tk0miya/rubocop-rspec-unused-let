@@ -161,9 +161,10 @@ module RuboCop
           end
         end
 
-        # `let`, `subject`, and hook blocks defined in ancestor groups are
-        # evaluated in the example's scope, so a reference to `name` there
-        # resolves to the definition visible at the running example.
+        # `let`, `subject`, and hook blocks — and plain `def` helpers — defined
+        # in ancestor groups are evaluated in the example's scope, so a
+        # reference to `name` there resolves to the definition visible at the
+        # running example.
         #
         # @rbs group: RuboCop::AST::Node
         # @rbs name: Symbol | String
@@ -182,7 +183,24 @@ module RuboCop
             ancestor_group = RuboCop::RSpec::ExampleGroup.new(ancestor)
             ancestor_group.lets +
               ancestor_group.subjects +
-              ancestor_group.hooks.map(&:to_node)
+              ancestor_group.hooks.map(&:to_node) +
+              method_definitions_in(ancestor)
+          end
+        end
+
+        # `def foo` written at an example group's level becomes an instance
+        # method on the group's example class, so calls to a `let` from inside
+        # such a helper count as references. Skip `def`s nested inside a
+        # deeper example/shared group — those aren't visible from `ancestor`.
+        #
+        # @rbs ancestor: RuboCop::AST::Node
+        def method_definitions_in(ancestor) #: Array[RuboCop::AST::Node]
+          ancestor.each_descendant(:def).select do |defn|
+            node = defn #: untyped
+            nearest = node.each_ancestor(:block).find do |b|
+              b.equal?(ancestor) || spec_group?(b)
+            end
+            nearest.equal?(ancestor)
           end
         end
 

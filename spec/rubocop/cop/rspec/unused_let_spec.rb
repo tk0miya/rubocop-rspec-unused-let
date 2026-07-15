@@ -205,6 +205,36 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         RUBY
       end
 
+      it "in a def helper defined in an ancestor group" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            def call_helper
+              inner
+            end
+
+            context "when nested" do
+              let(:inner) { 1 }
+
+              it { call_helper }
+            end
+          end
+        RUBY
+      end
+
+      it "in a def helper defined in the same group" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            let(:value) { 1 }
+
+            def call_helper
+              value
+            end
+
+            it { expect(call_helper).to eq(1) }
+          end
+        RUBY
+      end
+
       it "through send" do
         expect_no_offenses(<<~RUBY)
           RSpec.describe Foo do
