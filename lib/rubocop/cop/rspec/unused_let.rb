@@ -59,7 +59,19 @@ module RuboCop
       #
       #     it { expect(Widget.count).to eq(1) }
       #   end
+      #
+      # @safety
+      #   Autocorrect deletes the flagged `let` definition. That is behaviorally
+      #   safe for a plain `let`, whose block never runs when the helper is
+      #   unreferenced, but a `let!` block is executed eagerly and may exist
+      #   purely for its side effects. RuboCop treats autocorrect safety as a
+      #   whole-cop setting, so the cop is marked unsafe and both `let` and
+      #   `let!` are only removed under `rubocop --autocorrect-all`.
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
+        extend AutoCorrector
+
+        include RangeHelp
+
         MSG = "`%<helper>s(:%<name>s)` is not referenced anywhere. " \
               "Remove it or reference it in an example."
 
@@ -121,7 +133,11 @@ module RuboCop
 
           node = let #: untyped
           send_node = node.block_type? ? node.send_node : node
-          add_offense(send_node, message: format(MSG, helper: helper, name: name))
+          add_offense(send_node, message: format(MSG, helper: helper, name: name)) do |corrector|
+            corrector.remove(
+              range_by_whole_lines(node.source_range, include_final_newline: true)
+            )
+          end
         end
 
         # @rbs group: RuboCop::AST::Node

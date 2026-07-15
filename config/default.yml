@@ -2,6 +2,7 @@
 RSpec/UnusedLet:
   Description: Checks for `let` definitions that are never referenced.
   Enabled: true
+  SafeAutoCorrect: false
   CheckLetBang: true
   Include:
     - "**/*_spec.rb"

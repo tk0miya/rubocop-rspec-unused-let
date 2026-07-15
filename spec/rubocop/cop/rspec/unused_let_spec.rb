@@ -7,12 +7,20 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
 
   context "with let" do
     context "when unused" do
-      it "flags it" do
+      it "flags it and removes the definition" do
         expect_offense(<<~RUBY)
           RSpec.describe Foo do
             let(:used) { 1 }
             let(:unused) { 2 }
             ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+            it { expect(used).to eq(1) }
+          end
+        RUBY
+
+        expect_correction(<<~RUBY)
+          RSpec.describe Foo do
+            let(:used) { 1 }
 
             it { expect(used).to eq(1) }
           end
@@ -30,6 +38,13 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
             it { expect(true).to be(true) }
           end
         RUBY
+
+        expect_correction(<<~RUBY)
+          RSpec.describe Foo do
+
+            it { expect(true).to be(true) }
+          end
+        RUBY
       end
 
       it "flags an unused string-named let" do
@@ -41,6 +56,13 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
             it { expect(true).to be(true) }
           end
         RUBY
+
+        expect_correction(<<~RUBY)
+          RSpec.describe Foo do
+
+            it { expect(true).to be(true) }
+          end
+        RUBY
       end
 
       it "flags an unused let defined with a block-pass" do
@@ -48,6 +70,34 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           RSpec.describe Foo do
             let(:unused, &:computed)
             ^^^^^^^^^^^^^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+            it { expect(true).to be(true) }
+          end
+        RUBY
+
+        expect_correction(<<~RUBY)
+          RSpec.describe Foo do
+
+            it { expect(true).to be(true) }
+          end
+        RUBY
+      end
+
+      it "flags an unused let defined with a do..end block" do
+        expect_offense(<<~RUBY)
+          RSpec.describe Foo do
+            let(:unused) do
+            ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+              value = 1
+              value + 1
+            end
+
+            it { expect(true).to be(true) }
+          end
+        RUBY
+
+        expect_correction(<<~RUBY)
+          RSpec.describe Foo do
 
             it { expect(true).to be(true) }
           end
@@ -249,11 +299,18 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
   context "with let!" do
     context "when unused" do
       context "when CheckLetBang is enabled (default)" do
-        it "flags it" do
+        it "flags it and removes the definition" do
           expect_offense(<<~RUBY)
             RSpec.describe Foo do
               let!(:widget) { create(:widget) }
               ^^^^^^^^^^^^^ `let!(:widget)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { expect(Widget.count).to eq(1) }
+            end
+          RUBY
+
+          expect_correction(<<~RUBY)
+            RSpec.describe Foo do
 
               it { expect(Widget.count).to eq(1) }
             end
