@@ -32,6 +32,12 @@ Metrics/ClassLength:
 Metrics/MethodLength:
   Max: 30
 
+# Naming
+# The gem entry point must be named after the gem for `require:`/`plugins:`.
+Naming/FileName:
+  Exclude:
+    - lib/rubocop-rspec-unused-let.rb
+
 # RSpec
 RSpec/ExampleLength:
   Enabled: false

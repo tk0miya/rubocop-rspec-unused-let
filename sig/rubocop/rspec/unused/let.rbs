@@ -6,6 +6,10 @@ module Rubocop
       module Let
         class Error < StandardError
         end
+
+        PROJECT_ROOT: untyped
+
+        CONFIG_DEFAULT: untyped
       end
     end
   end
