@@ -103,6 +103,55 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           end
         RUBY
       end
+
+      context "when a known gem's `type:` metadata does not apply" do
+        it "flags `let(:value)` when no metadata is present" do
+          expect_offense(<<~RUBY)
+            RSpec.describe JsonFormatValidator do
+              let(:value) { "String" }
+              ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { is_expected.to be_invalid }
+            end
+          RUBY
+        end
+
+        it "flags `let(:value)` when the metadata is a different type" do
+          expect_offense(<<~RUBY)
+            RSpec.describe JsonFormatValidator, type: :model do
+              let(:value) { "String" }
+              ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { is_expected.to be_invalid }
+            end
+          RUBY
+        end
+
+        it "flags `let(:value)` when an inner context overrides the type" do
+          expect_offense(<<~RUBY)
+            RSpec.describe JsonFormatValidator, type: :validator do
+              context "as a model", type: :model do
+                let(:value) { "String" }
+                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it { is_expected.to be_invalid }
+              end
+            end
+          RUBY
+        end
+
+        it "flags a let whose name is not covered even under `type: :validator`" do
+          expect_offense(<<~RUBY)
+            RSpec.describe JsonFormatValidator, type: :validator do
+              let(:value) { "String" }
+              let(:unused) { 1 }
+              ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { is_expected.to be_invalid }
+            end
+          RUBY
+        end
+      end
     end
 
     context "when referenced" do
@@ -303,6 +352,57 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
                 let(:value) { 2 }
 
                 it { do_something }
+              end
+            end
+          RUBY
+        end
+      end
+
+      context "when `type: :validator` (rspec-validator_spec_helper) is in scope" do
+        it "ignores `let(:value)` overridden at the top level" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe JsonFormatValidator, type: :validator do
+              let(:value) { "String" }
+
+              it { is_expected.to be_invalid }
+            end
+          RUBY
+        end
+
+        it "ignores `let(:value)` overridden in a nested context" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe JsonFormatValidator, type: :validator do
+              describe "#validate_each" do
+                context "when not JSON" do
+                  let(:value) { "String" }
+
+                  it { is_expected.to be_invalid }
+                end
+              end
+            end
+          RUBY
+        end
+
+        it "ignores the helper's other overridable lets" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe JsonFormatValidator, type: :validator do
+              let(:attribute_names) { [:field] }
+              let(:options) { { allow_nil: true } }
+              let(:validator_name) { "CustomValidator" }
+              let(:model_class) { Struct.new(:field) }
+
+              it { is_expected.to be_invalid }
+            end
+          RUBY
+        end
+
+        it "ignores overrides when the metadata is set on an inner context" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe JsonFormatValidator do
+              context "when JSON", type: :validator do
+                let(:value) { "String" }
+
+                it { is_expected.to be_invalid }
               end
             end
           RUBY

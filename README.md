@@ -116,6 +116,28 @@ RSpec/UnusedLet:
   CheckLetBang: true
 ```
 
+## Known-gem support
+
+Some gems ship a shared context that dereferences `let` names dynamically
+(e.g. via `eval`), so a single-file static analysis cannot see the
+references. When the cop recognizes such a gem by the `type:` metadata on
+an example group (or one of its ancestors), it treats the affected `let`
+names as used automatically.
+
+Currently supported:
+
+- [rspec-validator_spec_helper](https://github.com/izumin5210/rspec-validator_spec_helper)
+  — groups tagged with `type: :validator` may define `let(:value)`,
+  `let(:attribute_names)`, `let(:options)` (and the helper's other
+  overridable lets) without being flagged.
+
+```ruby
+RSpec.describe JsonFormatValidator, type: :validator do
+  let(:value) { "String" }   # not flagged
+  it { is_expected.to be_invalid }
+end
+```
+
 ## Known limitations
 
 - Analysis is limited to a single file; references reachable only across files

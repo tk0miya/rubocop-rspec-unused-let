@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+- `RSpec/UnusedLet` now recognizes `let` definitions consumed by
+  well-known gems' shared contexts and treats them as used. Currently
+  supports [rspec-validator_spec_helper](https://github.com/izumin5210/rspec-validator_spec_helper):
+  groups tagged with `type: :validator` may override `value`,
+  `attribute_names`, `options` (and the helper's other overridable
+  lets) without being flagged.
 - Fix a false positive in `RSpec/UnusedLet` when a `let` defined in a
   nested group was only referenced from an ancestor group's `let`,
   `subject`, or hook block. Those ancestor blocks run in the example's

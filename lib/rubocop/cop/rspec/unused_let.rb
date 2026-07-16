@@ -25,6 +25,13 @@ module RuboCop
       # * `let` definitions that participate in an override chain (redefined in a
       #   nested group, or overriding an outer definition) are ignored, since the
       #   outer definition may be reached through `super`.
+      # * `let` definitions whose name is implicitly consumed by a well-known
+      #   gem's shared context (identified by the `type:` metadata on an
+      #   example group or one of its ancestors) are ignored. Currently this
+      #   covers {https://github.com/izumin5210/rspec-validator_spec_helper
+      #   rspec-validator_spec_helper}, whose `type: :validator` groups inject
+      #   a shared subject that dereferences `value`, `attribute_names`, and
+      #   `options` via `eval`.
       #
       # Dynamic references such as `send(:foo)` are treated as usages.
       #
@@ -79,6 +86,23 @@ module RuboCop
           send public_send __send__ method respond_to?
         ].freeze
 
+        # Well-known gems whose shared contexts inject `let` definitions that
+        # single-file analysis cannot see referenced, keyed by the `type:`
+        # metadata that pulls the shared context in. When an example group
+        # (or any of its ancestors) carries a matching `type:`, the listed
+        # `let` names are treated as referenced.
+        IMPLICIT_LETS_BY_TYPE = {
+          # rspec-validator_spec_helper
+          # https://github.com/izumin5210/rspec-validator_spec_helper
+          # `type: :validator` triggers a shared subject that dereferences
+          # these names via `eval`, hidden from static analysis.
+          validator: %i[
+            value attribute_names options
+            validator_name validator_class validator_type validation_name
+            model_class
+          ].freeze
+        }.freeze
+
         # Signatures for the helpers defined dynamically by the node pattern
         # macros below (rbs-inline cannot infer these).
         #
@@ -115,8 +139,9 @@ module RuboCop
           # consume any `let` visible here, so we cannot judge them.
           return if contains_inclusion?(node)
 
+          used_names = used_let_names(node)
           RuboCop::RSpec::ExampleGroup.new(node).lets.each do |let|
-            check_let(node, let)
+            check_let(node, let, used_names)
           end
         end
 
@@ -124,10 +149,12 @@ module RuboCop
 
         # @rbs group: RuboCop::AST::Node
         # @rbs let: RuboCop::AST::Node
-        def check_let(group, let) #: void
+        # @rbs used_names: Array[Symbol]
+        def check_let(group, let, used_names) #: void # rubocop:disable Metrics/CyclomaticComplexity
           helper, name = let_definition(let)
           return unless name
           return if helper == :let! && !cop_config["CheckLetBang"]
+          return if used_names.include?(name.to_sym)
           return if override_chain?(group, name)
           return if referenced?(group, name)
 
@@ -138,6 +165,47 @@ module RuboCop
               range_by_whole_lines(node.source_range, include_final_newline: true)
             )
           end
+        end
+
+        # `let` names that a known gem's shared context references
+        # implicitly (and therefore should be treated as used) given the
+        # `type:` metadata visible at `group` or on any of its ancestor
+        # example groups. Empty array when no matching known-gem pattern
+        # applies.
+        #
+        # @rbs group: RuboCop::AST::Node
+        def used_let_names(group) #: Array[Symbol]
+          Array(IMPLICIT_LETS_BY_TYPE[effective_type(group)])
+        end
+
+        # `type:` metadata visible at `group`, walking innermost-first so an
+        # inner group's `type:` overrides an outer one — matching RSpec's
+        # own metadata cascade.
+        #
+        # @rbs group: RuboCop::AST::Node
+        def effective_type(group) #: Symbol?
+          [group, *group.each_ancestor(:block)].each do |ancestor|
+            next unless spec_group?(ancestor)
+
+            type = type_from_group(ancestor)
+            return type if type
+          end
+          nil
+        end
+
+        # @rbs spec_group: RuboCop::AST::Node
+        def type_from_group(spec_group) #: Symbol?
+          block = spec_group #: untyped
+          block.send_node.arguments.each do |arg|
+            next unless arg.hash_type?
+
+            arg.pairs.each do |pair|
+              key = pair.key
+              value = pair.value
+              return value.value if key.sym_type? && key.value == :type && value.sym_type?
+            end
+          end
+          nil
         end
 
         # @rbs group: RuboCop::AST::Node
