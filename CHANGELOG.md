@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- `RSpec/UnusedLet` now excludes helper specs (`spec/helpers/**/*`) by
+  default.
 - `RSpec/UnusedLet` now recognizes `let` definitions consumed by
   well-known gems' shared contexts and treats them as used. Currently
   supports [rspec-validator_spec_helper](https://github.com/izumin5210/rspec-validator_spec_helper):

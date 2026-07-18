@@ -7,4 +7,6 @@ RSpec/UnusedLet:
   Include:
     - "**/*_spec.rb"
     - "**/spec/**/*"
+  Exclude:
+    - "**/spec/helpers/**/*"
   VersionAdded: '1.0.0'

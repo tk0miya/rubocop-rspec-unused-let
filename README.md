@@ -145,6 +145,8 @@ end
 - `let` definitions in an override chain (redefined in a nested group, or
   overriding an outer definition) are skipped, since the outer one may be
   reached through `super`.
+- Helper specs under `spec/helpers/` are excluded by default. Override
+  `Exclude` in your `.rubocop.yml` if you want them checked.
 
 ## Development
 
