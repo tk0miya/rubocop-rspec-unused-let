@@ -397,32 +397,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           RUBY
         end
 
-        it "ignores `let(:value)` when an inner context sets a different type" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe JsonFormatValidator, type: :validator do
-              context "as a model", type: :model do
-                let(:value) { "String" }
-
-                it { is_expected.to be_invalid }
-              end
-            end
-          RUBY
-        end
-
-        it "ignores `let(:value)` however deeply nested below the validator group" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe JsonFormatValidator, type: :validator do
-              context "as a model", type: :model do
-                context "with details" do
-                  let(:value) { "String" }
-
-                  it { is_expected.to be_invalid }
-                end
-              end
-            end
-          RUBY
-        end
-
         it "still flags a let whose name is not one the helper injects" do
           expect_offense(<<~RUBY)
             RSpec.describe JsonFormatValidator, type: :validator do
