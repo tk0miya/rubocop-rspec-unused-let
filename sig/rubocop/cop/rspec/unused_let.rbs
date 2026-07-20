@@ -22,9 +22,6 @@ module RuboCop
       #   (`it_behaves_like`, `include_examples`, `include_context`, ...), the
       #   `let` definitions visible at that inclusion point are ignored, because
       #   the (possibly external) shared block may reference them.
-      # * `let` definitions that participate in an override chain (redefined in a
-      #   nested group, or overriding an outer definition) are ignored, since the
-      #   outer definition may be reached through `super`.
       # * `let` definitions whose name is implicitly consumed by a well-known
       #   gem's shared context (identified by the `type:` metadata on an
       #   example group or one of its ancestors) are ignored. Currently this

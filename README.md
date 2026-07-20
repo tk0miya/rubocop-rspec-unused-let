@@ -142,9 +142,6 @@ end
 
 - Analysis is limited to a single file; references reachable only across files
   (e.g. through external shared examples) are intentionally not flagged.
-- `let` definitions in an override chain (redefined in a nested group, or
-  overriding an outer definition) are skipped, since the outer one may be
-  reached through `super`.
 
 ## Development
 

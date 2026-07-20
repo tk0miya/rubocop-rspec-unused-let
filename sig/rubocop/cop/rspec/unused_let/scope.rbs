@@ -7,10 +7,10 @@ module RuboCop
         # A mutable snapshot of one example/shared group. {ScopeBuilder}
         # populates a scope with its own definitions and references as the group
         # is entered, and its finished children are folded in via #absorb as they
-        # leave the stack. `refs`, `incl`, and `def_counts` therefore grow from "this
-        # group only" to "this whole subtree" by the time the group is resolved.
-        # Ancestors live on the traversal stack, so #unreferenced_defs receives
-        # them explicitly rather than via a pointer.
+        # leave the stack. `refs` and `incl` therefore grow from "this group only"
+        # to "this whole subtree" by the time the group is resolved. Ancestors
+        # live on the traversal stack, so #unreferenced_defs receives them
+        # explicitly rather than via a pointer.
         class Scope
           type kind = :example | :shared
 
@@ -20,15 +20,11 @@ module RuboCop
 
           attr_reader defs: Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
 
-          attr_reader def_names: Set[Symbol]
-
           attr_reader helper_refs: Set[Symbol]
 
           attr_reader refs: Set[Symbol]
 
           attr_reader incl: bool
-
-          attr_reader def_counts: Hash[Symbol, Integer]
 
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
@@ -59,9 +55,10 @@ module RuboCop
           # group (`shared_examples`/`shared_context`).
           def example?: () -> bool
 
-          # Definitions here that no reference could ever reach, given the
-          # enclosing `ancestors` (innermost first). Shared groups never report —
-          # their `let`s may be consumed by external including groups.
+          # Definitions here whose name is never referenced within this group's
+          # subtree, given the enclosing `ancestors` (innermost first). Shared
+          # groups never report — their `let`s may be consumed by external
+          # including groups.
           #
           # @rbs ancestors: Array[Scope]
           def unreferenced_defs: (Array[Scope] ancestors) -> Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
@@ -70,19 +67,14 @@ module RuboCop
 
           attr_writer incl: bool
 
-          # Could a reference to `name` (defined here) resolve to this
-          # definition anywhere it is visible?
+          # Could a reference reach the definition of `name` in this group? `refs`
+          # spans the whole subtree, so a reference in this group or any nested
+          # group counts, as does a reference in an ancestor helper body (which
+          # runs in the example's scope and so resolves to this definition).
           #
           # @rbs name: Symbol
           # @rbs ancestors: Array[Scope]
           def reachable?: (Symbol name, Array[Scope] ancestors) -> bool
-
-          # Part of an override chain: redefined deeper in this subtree, or
-          # shadowing an ancestor's definition (either may be reached via `super`).
-          #
-          # @rbs name: Symbol
-          # @rbs ancestors: Array[Scope]
-          def overridden?: (Symbol name, Array[Scope] ancestors) -> bool
         end
       end
     end
