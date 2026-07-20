@@ -316,13 +316,15 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           RUBY
         end
 
-        it "is redefined in a nested group and only reached through super" do
-          expect_no_offenses(<<~RUBY)
+        it "flags the whole chain when no member is referenced" do
+          expect_offense(<<~RUBY)
             RSpec.describe Foo do
               let(:value) { 1 }
+              ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
 
               context "when nested" do
                 let(:value) { super() + 1 }
+                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
 
                 it { do_something }
               end
@@ -330,8 +332,8 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           RUBY
         end
 
-        it "overrides an outer definition" do
-          expect_no_offenses(<<~RUBY)
+        it "flags an inner override that its own group never references" do
+          expect_offense(<<~RUBY)
             RSpec.describe Foo do
               let(:value) { 1 }
 
@@ -339,9 +341,37 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
 
               context "when overridden" do
                 let(:value) { 2 }
+                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
 
                 it { do_something }
               end
+            end
+          RUBY
+        end
+
+        it "keeps the outer definition when only the inner override is referenced" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              let(:value) { 1 }
+
+              context "when overridden" do
+                let(:value) { 2 }
+
+                it { expect(value).to eq(2) }
+              end
+            end
+          RUBY
+        end
+
+        it "flags an unreferenced same-group redefinition chain" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              let(:value) { 1 }
+              ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+              let(:value) { 2 }
+              ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { do_something }
             end
           RUBY
         end
