@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "set"
+
 module RuboCop
   module Cop
     module RSpec
@@ -7,10 +9,10 @@ module RuboCop
         # A mutable snapshot of one example/shared group. {ScopeBuilder}
         # populates a scope with its own definitions and references as the group
         # is entered, and its finished children are folded in via #absorb as they
-        # leave the stack. `refs` and `incl` therefore grow from "this group only"
-        # to "this whole subtree" by the time the group is resolved. Ancestors
-        # live on the traversal stack, so #unreferenced_defs receives them
-        # explicitly rather than via a pointer.
+        # leave the stack. `refs` and `inclusion` therefore grow from "this
+        # group only" to "this whole subtree" by the time the group is resolved.
+        # Ancestors live on the traversal stack, so #unreferenced_defs receives
+        # them explicitly rather than via a pointer.
         class Scope
           # @rbs! type kind = :example | :shared
 
@@ -19,7 +21,7 @@ module RuboCop
           attr_reader :defs #: Array[[ Symbol, Symbol, RuboCop::AST::Node ]] -- `[helper, name, node]` per `let` here
           attr_reader :helper_refs #: Set[Symbol] -- names referenced in this group's helper bodies
           attr_reader :refs #: Set[Symbol] -- names referenced anywhere in this subtree
-          attr_reader :incl #: bool -- whether a shared inclusion sits anywhere in this subtree
+          attr_reader :inclusion #: bool -- whether a shared inclusion sits anywhere in this subtree
 
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
@@ -29,7 +31,7 @@ module RuboCop
             @defs = []
             @helper_refs = Set.new
             @refs = Set.new
-            @incl = false
+            @inclusion = false
           end
 
           # @rbs helper: Symbol
@@ -53,7 +55,7 @@ module RuboCop
           end
 
           def mark_inclusion #: void
-            self.incl = true
+            self.inclusion = true
           end
 
           # Fold a finished child's subtree aggregates into this scope.
@@ -61,7 +63,7 @@ module RuboCop
           # @rbs child: Scope
           def absorb(child) #: void
             refs.merge(child.refs)
-            self.incl ||= child.incl
+            self.inclusion ||= child.inclusion
           end
 
           # An example group (`describe`/`context`/...), as opposed to a shared
@@ -84,7 +86,7 @@ module RuboCop
 
           private
 
-          attr_writer :incl #: bool
+          attr_writer :inclusion #: bool
 
           # Could a reference reach the definition of `name` in this group? `refs`
           # spans the whole subtree, so a reference in this group or any nested
@@ -94,7 +96,7 @@ module RuboCop
           # @rbs name: Symbol
           # @rbs ancestors: Array[Scope]
           def reachable?(name, ancestors) #: bool
-            incl ||
+            inclusion ||
               refs.include?(name) ||
               ancestors.any? { _1.helper_refs.include?(name) }
           end
