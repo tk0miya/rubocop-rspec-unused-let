@@ -14,26 +14,8 @@ module RuboCop
         class Scope
           # @rbs! type kind = :example | :shared
 
-          # Well-known gems whose shared contexts inject `let` definitions that
-          # single-file analysis cannot see referenced, keyed by the `type:`
-          # metadata that pulls the shared context in. When an example group
-          # (or any of its ancestors) carries a matching `type:`, the listed
-          # `let` names are treated as referenced.
-          IMPLICIT_LETS_BY_TYPE = {
-            # rspec-validator_spec_helper
-            # https://github.com/izumin5210/rspec-validator_spec_helper
-            # `type: :validator` triggers a shared subject that dereferences
-            # these names via `eval`, hidden from static analysis.
-            validator: %i[
-              value attribute_names options
-              validator_name validator_class validator_type validation_name
-              model_class
-            ].freeze
-          }.freeze
-
           attr_reader :node #: RuboCop::AST::Node -- the group's block node
           attr_reader :kind #: kind -- :example or :shared
-          attr_reader :type #: Symbol? -- `type:` metadata declared on this group
           attr_reader :defs #: Array[[ Symbol, Symbol, RuboCop::AST::Node ]] -- `[helper, name, node]` per `let` here
           attr_reader :def_names #: Set[Symbol] -- names defined directly in this group
           attr_reader :helper_refs #: Set[Symbol] -- names referenced in this group's helper bodies
@@ -43,11 +25,9 @@ module RuboCop
 
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
-          # @rbs type: Symbol?
-          def initialize(node:, kind:, type:) #: void
+          def initialize(node:, kind:) #: void
             @node = node
             @kind = kind
-            @type = type
             @defs = []
             @def_names = Set.new
             @helper_refs = Set.new
@@ -121,7 +101,6 @@ module RuboCop
             incl ||
               refs.include?(name) ||
               overridden?(name, ancestors) ||
-              implicitly_used?(name, ancestors) ||
               ancestors.any? { _1.helper_refs.include?(name) }
           end
 
@@ -133,26 +112,6 @@ module RuboCop
           def overridden?(name, ancestors) #: bool
             def_counts.fetch(name, 0) > 1 ||
               ancestors.any? { _1.def_names.include?(name) }
-          end
-
-          # Referenced implicitly by a known gem's shared context, keyed by the
-          # `type:` metadata visible here.
-          #
-          # @rbs name: Symbol
-          # @rbs ancestors: Array[Scope]
-          def implicitly_used?(name, ancestors) #: bool
-            type = effective_type(ancestors)
-            return false unless type
-
-            Array(IMPLICIT_LETS_BY_TYPE[type]).include?(name)
-          end
-
-          # `type:` metadata visible here, innermost-first so an inner group's
-          # `type:` overrides an outer one.
-          #
-          # @rbs ancestors: Array[Scope]
-          def effective_type(ancestors) #: Symbol?
-            [self, *ancestors].filter_map(&:type).first
           end
         end
       end

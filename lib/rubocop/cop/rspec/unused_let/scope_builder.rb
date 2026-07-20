@@ -17,6 +17,23 @@ module RuboCop
             send public_send __send__ method respond_to?
           ].freeze
 
+          # Well-known gems whose shared contexts inject `let` definitions that
+          # single-file analysis cannot see referenced, keyed by the `type:`
+          # metadata that pulls the shared context in. When a group carries a
+          # matching `type:`, the listed names are recorded as references so
+          # that `let`s of those names (here or in a descendant) count as used.
+          IMPLICIT_LETS_BY_TYPE = {
+            # rspec-validator_spec_helper
+            # https://github.com/izumin5210/rspec-validator_spec_helper
+            # `type: :validator` triggers a shared subject that dereferences
+            # these names via `eval`, hidden from static analysis.
+            validator: %i[
+              value attribute_names options
+              validator_name validator_class validator_type validation_name
+              model_class
+            ].freeze
+          }.freeze
+
           # Signatures for the node-pattern matchers defined below (rbs-inline
           # cannot infer these).
           #
@@ -49,14 +66,36 @@ module RuboCop
           # @rbs node: RuboCop::AST::Node
           def build_from(node) #: Scope
             kind = example_group?(node) ? :example : :shared #: Scope::kind
-            scope = Scope.new(node: node, kind: kind, type: type_from_group(node))
+            scope = Scope.new(node: node, kind: kind)
             collect_definitions(node, scope)
             collect_region_references(node, scope)
             collect_helper_references(node, scope)
+            inject_implicit_references(node, scope)
             scope
           end
 
           private
+
+          # A well-known gem's shared context (pulled in by `type:` metadata)
+          # can reference `let` names that single-file analysis never sees.
+          # Record them exactly as a real helper on this group would be: a real
+          # reference lands in both sets, so mirror that. `refs` justifies a
+          # `let` defined here (or, via #absorb, in an ancestor group), while
+          # `helper_refs` reaches `let`s in descendant groups, since helper
+          # bodies run in the example's scope.
+          #
+          # @rbs node: RuboCop::AST::Node
+          # @rbs scope: Scope
+          def inject_implicit_references(node, scope) #: void
+            type = type_from_group(node)
+            names = type && IMPLICIT_LETS_BY_TYPE[type]
+            return unless names
+
+            names.each do |name|
+              scope.add_reference(name)
+              scope.add_helper_reference(name)
+            end
+          end
 
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
