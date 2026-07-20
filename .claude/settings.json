@@ -20,6 +20,16 @@
             "timeout": 300000
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/self-review.sh",
+            "timeout": 10000
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -40,16 +50,6 @@
             "type": "command",
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/rbs-inline.sh",
             "timeout": 60000
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/self-review.sh",
-            "timeout": 10000
           }
         ]
       }
