@@ -14,18 +14,9 @@ module RuboCop
         class Scope
           type kind = :example | :shared
 
-          # Well-known gems whose shared contexts inject `let` definitions that
-          # single-file analysis cannot see referenced, keyed by the `type:`
-          # metadata that pulls the shared context in. When an example group
-          # (or any of its ancestors) carries a matching `type:`, the listed
-          # `let` names are treated as referenced.
-          IMPLICIT_LETS_BY_TYPE: untyped
-
           attr_reader node: RuboCop::AST::Node
 
           attr_reader kind: kind
-
-          attr_reader type: Symbol?
 
           attr_reader defs: Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
 
@@ -41,8 +32,7 @@ module RuboCop
 
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
-          # @rbs type: Symbol?
-          def initialize: (node: RuboCop::AST::Node, kind: kind, type: Symbol?) -> void
+          def initialize: (node: RuboCop::AST::Node, kind: kind) -> void
 
           # @rbs helper: Symbol
           # @rbs name: Symbol
@@ -93,19 +83,6 @@ module RuboCop
           # @rbs name: Symbol
           # @rbs ancestors: Array[Scope]
           def overridden?: (Symbol name, Array[Scope] ancestors) -> bool
-
-          # Referenced implicitly by a known gem's shared context, keyed by the
-          # `type:` metadata visible here.
-          #
-          # @rbs name: Symbol
-          # @rbs ancestors: Array[Scope]
-          def implicitly_used?: (Symbol name, Array[Scope] ancestors) -> bool
-
-          # `type:` metadata visible here, innermost-first so an inner group's
-          # `type:` overrides an outer one.
-          #
-          # @rbs ancestors: Array[Scope]
-          def effective_type: (Array[Scope] ancestors) -> Symbol?
         end
       end
     end
