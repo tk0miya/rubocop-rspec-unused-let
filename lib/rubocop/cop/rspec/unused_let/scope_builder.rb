@@ -17,12 +17,12 @@ module RuboCop
             send public_send __send__ method respond_to?
           ].freeze
 
-          # Well-known gems whose shared contexts inject `let` definitions that
-          # single-file analysis cannot see referenced, keyed by the `type:`
+          # `let` names that well-known gems' shared contexts implicitly
+          # reference, hidden from single-file analysis, keyed by the `type:`
           # metadata that pulls the shared context in. When a group carries a
           # matching `type:`, the listed names are recorded as references so
           # that `let`s of those names (here or in a descendant) count as used.
-          IMPLICIT_LETS_BY_TYPE = {
+          IMPLICIT_REFS_BY_TYPE = {
             # rspec-validator_spec_helper
             # https://github.com/izumin5210/rspec-validator_spec_helper
             # `type: :validator` triggers a shared subject that dereferences
@@ -88,7 +88,7 @@ module RuboCop
           # @rbs scope: Scope
           def inject_implicit_references(node, scope) #: void
             type = type_from_group(node)
-            names = type && IMPLICIT_LETS_BY_TYPE[type]
+            names = type && IMPLICIT_REFS_BY_TYPE[type]
             return unless names
 
             names.each do |name|

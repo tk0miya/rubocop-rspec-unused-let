@@ -7,6 +7,8 @@ require "rubocop/rspec/shared_contexts/default_rspec_language_config_context"
 
 require "rubocop/rspec/unused/let"
 
+require_relative "support/unused_let_ast"
+
 # RuboCop only injects rubocop-rspec's default configuration (which provides
 # `RSpec/Language`, `RSpec/Include`, etc.) when RuboCop runs with
 # `plugins: rubocop-rspec`. The test suite loads it manually so that node

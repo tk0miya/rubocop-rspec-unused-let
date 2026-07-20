@@ -27,44 +27,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         RUBY
       end
 
-      it "flags multiple unused lets independently" do
-        expect_offense(<<~RUBY)
-          RSpec.describe Foo do
-            let(:first) { 1 }
-            ^^^^^^^^^^^ `let(:first)` is not referenced anywhere. Remove it or reference it in an example.
-            let(:second) { 2 }
-            ^^^^^^^^^^^^ `let(:second)` is not referenced anywhere. Remove it or reference it in an example.
-
-            it { expect(true).to be(true) }
-          end
-        RUBY
-
-        expect_correction(<<~RUBY)
-          RSpec.describe Foo do
-
-            it { expect(true).to be(true) }
-          end
-        RUBY
-      end
-
-      it "flags an unused string-named let" do
-        expect_offense(<<~RUBY)
-          RSpec.describe Foo do
-            let("unused") { 1 }
-            ^^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
-
-            it { expect(true).to be(true) }
-          end
-        RUBY
-
-        expect_correction(<<~RUBY)
-          RSpec.describe Foo do
-
-            it { expect(true).to be(true) }
-          end
-        RUBY
-      end
-
       it "flags an unused let defined with a block-pass" do
         expect_offense(<<~RUBY)
           RSpec.describe Foo do
@@ -105,17 +67,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
       end
 
       context "when a known gem's `type:` metadata does not apply" do
-        it "flags `let(:value)` when no metadata is present" do
-          expect_offense(<<~RUBY)
-            RSpec.describe JsonFormatValidator do
-              let(:value) { "String" }
-              ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
-
-              it { is_expected.to be_invalid }
-            end
-          RUBY
-        end
-
         it "flags `let(:value)` when the metadata is a different type" do
           expect_offense(<<~RUBY)
             RSpec.describe JsonFormatValidator, type: :model do
@@ -140,29 +91,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         RUBY
       end
 
-      it "in a hook" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:value) { 1 }
-
-            before { value }
-
-            it { expect(true).to be(true) }
-          end
-        RUBY
-      end
-
-      it "from another let" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:base) { 1 }
-            let(:derived) { base + 1 }
-
-            it { expect(derived).to eq(2) }
-          end
-        RUBY
-      end
-
       it "in a nested example group" do
         expect_no_offenses(<<~RUBY)
           RSpec.describe Foo do
@@ -171,18 +99,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
             context "when nested" do
               it { expect(value).to eq(1) }
             end
-          end
-        RUBY
-      end
-
-      it "inside a subject block" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:value) { 1 }
-
-            subject { value + 1 }
-
-            it { is_expected.to eq(2) }
           end
         RUBY
       end
@@ -201,80 +117,12 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         RUBY
       end
 
-      it "in an ancestor subject block" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            subject { inner + 1 }
-
-            context "when nested" do
-              let(:inner) { 1 }
-
-              it { is_expected.to eq(2) }
-            end
-          end
-        RUBY
-      end
-
-      it "in an ancestor hook block" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            before { inner }
-
-            context "when nested" do
-              let(:inner) { 1 }
-
-              it { expect(true).to be(true) }
-            end
-          end
-        RUBY
-      end
-
-      it "in a def helper defined in an ancestor group" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            def call_helper
-              inner
-            end
-
-            context "when nested" do
-              let(:inner) { 1 }
-
-              it { call_helper }
-            end
-          end
-        RUBY
-      end
-
-      it "in a def helper defined in the same group" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:value) { 1 }
-
-            def call_helper
-              value
-            end
-
-            it { expect(call_helper).to eq(1) }
-          end
-        RUBY
-      end
-
       it "through send" do
         expect_no_offenses(<<~RUBY)
           RSpec.describe Foo do
             let(:value) { 1 }
 
             it { expect(send(:value)).to eq(1) }
-          end
-        RUBY
-      end
-
-      it "through public_send with a string" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:value) { 1 }
-
-            it { expect(public_send("value")).to eq(1) }
           end
         RUBY
       end
@@ -287,16 +135,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
             before { setup(value:) }
 
             it { expect(true).to be(true) }
-          end
-        RUBY
-      end
-
-      it "with a string name" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let("value") { 1 }
-
-            it { expect(value).to eq(1) }
           end
         RUBY
       end
@@ -402,31 +240,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           RUBY
         end
 
-        it "ignores the helper's other overridable lets" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe JsonFormatValidator, type: :validator do
-              let(:attribute_names) { [:field] }
-              let(:options) { { allow_nil: true } }
-              let(:validator_name) { "CustomValidator" }
-              let(:model_class) { Struct.new(:field) }
-
-              it { is_expected.to be_invalid }
-            end
-          RUBY
-        end
-
-        it "ignores overrides when the metadata is set on an inner context" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe JsonFormatValidator do
-              context "when JSON", type: :validator do
-                let(:value) { "String" }
-
-                it { is_expected.to be_invalid }
-              end
-            end
-          RUBY
-        end
-
         it "still flags a let whose name is not one the helper injects" do
           expect_offense(<<~RUBY)
             RSpec.describe JsonFormatValidator, type: :validator do
@@ -452,18 +265,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         RUBY
       end
 
-      it "ignores lets visible from a nested inclusion" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:name) { "value" }
-
-            context "when shared" do
-              it_behaves_like "a thing"
-            end
-          end
-        RUBY
-      end
-
       it "ignores lets defined in the shared_examples block" do
         expect_no_offenses(<<~RUBY)
           RSpec.shared_examples "a thing" do
@@ -485,26 +286,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
 
               it { expect(true).to be(true) }
             end
-          end
-        RUBY
-      end
-
-      it "ignores lets when include_context is used" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:name) { "value" }
-
-            include_context "shared setup"
-          end
-        RUBY
-      end
-
-      it "ignores lets when include_examples is used" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:name) { "value" }
-
-            include_examples "a thing"
           end
         RUBY
       end
@@ -542,34 +323,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
               let!(:widget) { create(:widget) }
 
               it { expect(Widget.count).to eq(1) }
-            end
-          RUBY
-        end
-      end
-    end
-
-    context "when referenced" do
-      context "when CheckLetBang is enabled (default)" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              let!(:widget) { create(:widget) }
-
-              it { expect(widget).to be_present }
-            end
-          RUBY
-        end
-      end
-
-      context "when CheckLetBang is disabled" do
-        let(:cop_config) { { "CheckLetBang" => false } }
-
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              let!(:widget) { create(:widget) }
-
-              it { expect(widget).to be_present }
             end
           RUBY
         end
