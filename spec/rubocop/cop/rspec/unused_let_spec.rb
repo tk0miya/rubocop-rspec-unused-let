@@ -140,6 +140,21 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           RUBY
         end
 
+        it "flags `let(:value)` by the nearest ancestor type when defined in a type-less group" do
+          expect_offense(<<~RUBY)
+            RSpec.describe JsonFormatValidator, type: :validator do
+              context "as a model", type: :model do
+                context "with details" do
+                  let(:value) { "String" }
+                  ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+                  it { is_expected.to be_invalid }
+                end
+              end
+            end
+          RUBY
+        end
+
         it "flags a let whose name is not covered even under `type: :validator`" do
           expect_offense(<<~RUBY)
             RSpec.describe JsonFormatValidator, type: :validator do
@@ -336,6 +351,20 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
                 let(:value) { super() + 1 }
 
                 it { expect(value).to eq(2) }
+              end
+            end
+          RUBY
+        end
+
+        it "is redefined in a nested group and only reached through super" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              let(:value) { 1 }
+
+              context "when nested" do
+                let(:value) { super() + 1 }
+
+                it { do_something }
               end
             end
           RUBY

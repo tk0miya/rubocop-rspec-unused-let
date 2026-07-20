@@ -81,93 +81,35 @@ module RuboCop
 
         MSG: ::String
 
-        DYNAMIC_DISPATCH_METHODS: untyped
+        def on_new_investigation: () -> void
 
-        # Well-known gems whose shared contexts inject `let` definitions that
-        # single-file analysis cannot see referenced, keyed by the `type:`
-        # metadata that pulls the shared context in. When an example group
-        # (or any of its ancestors) carries a matching `type:`, the listed
-        # `let` names are treated as referenced.
-        IMPLICIT_LETS_BY_TYPE: untyped
-
-        def example_group?: (RuboCop::AST::Node node) -> bool
-
-        def spec_group?: (RuboCop::AST::Node node) -> bool
-
-        def let_definition: (RuboCop::AST::Node node) -> [ Symbol, Symbol | String ]?
-
-        def method_called?: (RuboCop::AST::Node node, Symbol name) -> bool
-
-        def contains_inclusion?: (RuboCop::AST::Node node) -> bool
-
+        # RuboCop visits nested groups on their own `on_block`, so we never
+        # descend manually.
+        #
         # @rbs node: RuboCop::AST::Node
         def on_block: (RuboCop::AST::Node node) -> void
 
+        # A group's subtree is complete by the time it is left, so resolve it
+        # here against the ancestors still on the stack, then fold it into its
+        # parent.
+        #
+        # @rbs node: RuboCop::AST::Node
+        def after_block: (RuboCop::AST::Node node) -> void
+
         private
 
-        # @rbs group: RuboCop::AST::Node
-        # @rbs let: RuboCop::AST::Node
-        # @rbs used_names: Array[Symbol]
-        def check_let: (RuboCop::AST::Node group, RuboCop::AST::Node let, Array[Symbol] used_names) -> void
+        attr_reader stack: Array[Scope]
 
-        # `let` names that a known gem's shared context references
-        # implicitly (and therefore should be treated as used) given the
-        # `type:` metadata visible at `group` or on any of its ancestor
-        # example groups. Empty array when no matching known-gem pattern
-        # applies.
-        #
-        # @rbs group: RuboCop::AST::Node
-        def used_let_names: (RuboCop::AST::Node group) -> Array[Symbol]
+        attr_reader builder: ScopeBuilder
 
-        # `type:` metadata visible at `group`, walking innermost-first so an
-        # inner group's `type:` overrides an outer one — matching RSpec's
-        # own metadata cascade.
-        #
-        # @rbs group: RuboCop::AST::Node
-        def effective_type: (RuboCop::AST::Node group) -> Symbol?
+        # @rbs scope: Scope
+        # @rbs ancestors: Array[Scope]
+        def resolve: (Scope scope, Array[Scope] ancestors) -> void
 
-        # @rbs spec_group: RuboCop::AST::Node
-        def type_from_group: (RuboCop::AST::Node spec_group) -> Symbol?
-
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def referenced?: (RuboCop::AST::Node group, Symbol | String name) -> bool
-
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def dynamically_referenced?: (RuboCop::AST::Node group, Symbol | String name) -> bool
-
-        # `let`, `subject`, and hook blocks — and plain `def` helpers — defined
-        # in ancestor groups are evaluated in the example's scope, so a
-        # reference to `name` there resolves to the definition visible at the
-        # running example.
-        #
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def referenced_in_ancestor_scope?: (RuboCop::AST::Node group, Symbol | String name) -> bool
-
-        # @rbs group: RuboCop::AST::Node
-        def ancestor_scope_nodes: (RuboCop::AST::Node group) -> Array[RuboCop::AST::Node]
-
-        # `def foo` written at an example group's level becomes an instance
-        # method on the group's example class, so calls to a `let` from inside
-        # such a helper count as references. Skip `def`s nested inside a
-        # deeper example/shared group — those aren't visible from `ancestor`.
-        #
-        # @rbs ancestor: RuboCop::AST::Node
-        def method_definitions_in: (RuboCop::AST::Node ancestor) -> Array[RuboCop::AST::Node]
-
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def override_chain?: (RuboCop::AST::Node group, Symbol | String name) -> bool
-
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def overrides_outer?: (RuboCop::AST::Node group, Symbol | String name) -> bool
-
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def redefined_in_descendant?: (RuboCop::AST::Node group, Symbol | String name) -> bool
+        # @rbs let_node: RuboCop::AST::Node
+        # @rbs helper: Symbol
+        # @rbs name: Symbol
+        def add_offense_for: (RuboCop::AST::Node let_node, Symbol helper, Symbol name) -> void
       end
     end
   end

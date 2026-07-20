@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require_relative "unused_let/scope"
+require_relative "unused_let/scope_builder"
+
 module RuboCop
   module Cop
     module RSpec
@@ -82,226 +85,63 @@ module RuboCop
         MSG = "`%<helper>s(:%<name>s)` is not referenced anywhere. " \
               "Remove it or reference it in an example."
 
-        DYNAMIC_DISPATCH_METHODS = %i[
-          send public_send __send__ method respond_to?
-        ].freeze
+        def on_new_investigation #: void
+          super
+          @stack = []
+          @builder = ScopeBuilder.new
+        end
 
-        # Well-known gems whose shared contexts inject `let` definitions that
-        # single-file analysis cannot see referenced, keyed by the `type:`
-        # metadata that pulls the shared context in. When an example group
-        # (or any of its ancestors) carries a matching `type:`, the listed
-        # `let` names are treated as referenced.
-        IMPLICIT_LETS_BY_TYPE = {
-          # rspec-validator_spec_helper
-          # https://github.com/izumin5210/rspec-validator_spec_helper
-          # `type: :validator` triggers a shared subject that dereferences
-          # these names via `eval`, hidden from static analysis.
-          validator: %i[
-            value attribute_names options
-            validator_name validator_class validator_type validation_name
-            model_class
-          ].freeze
-        }.freeze
-
-        # Signatures for the helpers defined dynamically by the node pattern
-        # macros below (rbs-inline cannot infer these).
+        # RuboCop visits nested groups on their own `on_block`, so we never
+        # descend manually.
         #
-        # @rbs!
-        #   def example_group?: (RuboCop::AST::Node node) -> bool
-        #   def spec_group?: (RuboCop::AST::Node node) -> bool
-        #   def let_definition: (RuboCop::AST::Node node) -> [ Symbol, (Symbol | String) ]?
-        #   def method_called?: (RuboCop::AST::Node node, Symbol name) -> bool
-        #   def contains_inclusion?: (RuboCop::AST::Node node) -> bool
-
-        def_node_matcher :example_group?, <<~PATTERN
-          (block (send #rspec? #ExampleGroups.all ...) ...)
-        PATTERN
-
-        def_node_matcher :spec_group?, <<~PATTERN
-          (block (send #rspec? {#ExampleGroups.all #SharedGroups.all} ...) ...)
-        PATTERN
-
-        def_node_matcher :let_definition, <<~PATTERN
-          {
-            (block (send nil? ${:let :let!} ({sym str} $_) ...) ...)
-            (send nil? ${:let :let!} ({sym str} $_) block_pass)
-          }
-        PATTERN
-
-        def_node_search :method_called?, "(send nil? %)"
-
-        def_node_search :contains_inclusion?, "(send nil? #Includes.all ...)"
-
         # @rbs node: RuboCop::AST::Node
         def on_block(node) #: void
-          return unless example_group?(node)
-          # A shared example inclusion anywhere in this group's subtree can
-          # consume any `let` visible here, so we cannot judge them.
-          return if contains_inclusion?(node)
+          stack.push(builder.build_from(node)) if builder.spec_group?(node)
+        end
 
-          used_names = used_let_names(node)
-          RuboCop::RSpec::ExampleGroup.new(node).lets.each do |let|
-            check_let(node, let, used_names)
-          end
+        # A group's subtree is complete by the time it is left, so resolve it
+        # here against the ancestors still on the stack, then fold it into its
+        # parent.
+        #
+        # @rbs node: RuboCop::AST::Node
+        def after_block(node) #: void
+          return unless builder.spec_group?(node)
+
+          scope = stack.pop
+          return unless scope
+
+          # `stack` is outermost-first (pushed pre-order); resolution wants the
+          # ancestor chain innermost-first.
+          resolve(scope, stack.reverse)
+          stack.last&.absorb(scope)
         end
 
         private
 
-        # @rbs group: RuboCop::AST::Node
-        # @rbs let: RuboCop::AST::Node
-        # @rbs used_names: Array[Symbol]
-        def check_let(group, let, used_names) #: void # rubocop:disable Metrics/CyclomaticComplexity
-          helper, name = let_definition(let)
-          return unless name
-          return if helper == :let! && !cop_config["CheckLetBang"]
-          return if used_names.include?(name.to_sym)
-          return if override_chain?(group, name)
-          return if referenced?(group, name)
+        attr_reader :stack #: Array[Scope]
+        attr_reader :builder #: ScopeBuilder
 
-          node = let #: untyped
+        # @rbs scope: Scope
+        # @rbs ancestors: Array[Scope]
+        def resolve(scope, ancestors) #: void
+          scope.unreferenced_defs(ancestors).each do |helper, name, let_node|
+            next if helper == :let! && !cop_config["CheckLetBang"]
+
+            add_offense_for(let_node, helper, name)
+          end
+        end
+
+        # @rbs let_node: RuboCop::AST::Node
+        # @rbs helper: Symbol
+        # @rbs name: Symbol
+        def add_offense_for(let_node, helper, name) #: void
+          node = let_node #: untyped
           send_node = node.block_type? ? node.send_node : node
           add_offense(send_node, message: format(MSG, helper: helper, name: name)) do |corrector|
             corrector.remove(
               range_by_whole_lines(node.source_range, include_final_newline: true)
             )
           end
-        end
-
-        # `let` names that a known gem's shared context references
-        # implicitly (and therefore should be treated as used) given the
-        # `type:` metadata visible at `group` or on any of its ancestor
-        # example groups. Empty array when no matching known-gem pattern
-        # applies.
-        #
-        # @rbs group: RuboCop::AST::Node
-        def used_let_names(group) #: Array[Symbol]
-          Array(IMPLICIT_LETS_BY_TYPE[effective_type(group)])
-        end
-
-        # `type:` metadata visible at `group`, walking innermost-first so an
-        # inner group's `type:` overrides an outer one — matching RSpec's
-        # own metadata cascade.
-        #
-        # @rbs group: RuboCop::AST::Node
-        def effective_type(group) #: Symbol?
-          [group, *group.each_ancestor(:block)].each do |ancestor|
-            next unless spec_group?(ancestor)
-
-            type = type_from_group(ancestor)
-            return type if type
-          end
-          nil
-        end
-
-        # @rbs spec_group: RuboCop::AST::Node
-        def type_from_group(spec_group) #: Symbol?
-          block = spec_group #: untyped
-          block.send_node.arguments.each do |arg|
-            next unless arg.hash_type?
-
-            arg.pairs.each do |pair|
-              key = pair.key
-              value = pair.value
-              return value.value if key.sym_type? && key.value == :type && value.sym_type?
-            end
-          end
-          nil
-        end
-
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def referenced?(group, name) #: bool
-          method_called?(group, name.to_sym) ||
-            dynamically_referenced?(group, name) ||
-            referenced_in_ancestor_scope?(group, name)
-        end
-
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def dynamically_referenced?(group, name) #: bool
-          target = name.to_s
-          group.each_descendant(:send).any? do |send_node|
-            node = send_node #: untyped
-            next false unless DYNAMIC_DISPATCH_METHODS.include?(node.method_name)
-
-            arg = node.first_argument
-            arg&.type?(:sym, :str) && arg.value.to_s == target
-          end
-        end
-
-        # `let`, `subject`, and hook blocks — and plain `def` helpers — defined
-        # in ancestor groups are evaluated in the example's scope, so a
-        # reference to `name` there resolves to the definition visible at the
-        # running example.
-        #
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def referenced_in_ancestor_scope?(group, name) #: bool
-          ancestor_scope_nodes(group).any? do |scope_node|
-            method_called?(scope_node, name.to_sym) ||
-              dynamically_referenced?(scope_node, name)
-          end
-        end
-
-        # @rbs group: RuboCop::AST::Node
-        def ancestor_scope_nodes(group) #: Array[RuboCop::AST::Node]
-          group.each_ancestor(:block).flat_map do |ancestor|
-            next [] unless spec_group?(ancestor)
-
-            ancestor_group = RuboCop::RSpec::ExampleGroup.new(ancestor)
-            ancestor_group.lets +
-              ancestor_group.subjects +
-              ancestor_group.hooks.map(&:to_node) +
-              method_definitions_in(ancestor)
-          end
-        end
-
-        # `def foo` written at an example group's level becomes an instance
-        # method on the group's example class, so calls to a `let` from inside
-        # such a helper count as references. Skip `def`s nested inside a
-        # deeper example/shared group — those aren't visible from `ancestor`.
-        #
-        # @rbs ancestor: RuboCop::AST::Node
-        def method_definitions_in(ancestor) #: Array[RuboCop::AST::Node]
-          ancestor.each_descendant(:def).select do |defn|
-            node = defn #: untyped
-            nearest = node.each_ancestor(:block).find do |b|
-              b.equal?(ancestor) || spec_group?(b)
-            end
-            nearest.equal?(ancestor)
-          end
-        end
-
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def override_chain?(group, name) #: bool
-          overrides_outer?(group, name) ||
-            redefined_in_descendant?(group, name)
-        end
-
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def overrides_outer?(group, name) #: bool
-          group.each_ancestor(:block).any? do |ancestor|
-            next false unless spec_group?(ancestor)
-
-            RuboCop::RSpec::ExampleGroup.new(ancestor).lets.any? do |let|
-              _, other = let_definition(let)
-              other == name
-            end
-          end
-        end
-
-        # @rbs group: RuboCop::AST::Node
-        # @rbs name: Symbol | String
-        def redefined_in_descendant?(group, name) #: bool
-          count = 0
-          group.each_descendant(:block, :send) do |descendant|
-            _, other = let_definition(descendant)
-            count += 1 if other == name
-            return true if count > 1
-          end
-          false
         end
       end
     end
