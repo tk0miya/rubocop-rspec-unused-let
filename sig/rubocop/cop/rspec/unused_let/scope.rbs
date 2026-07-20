@@ -1,0 +1,113 @@
+# Generated from lib/rubocop/cop/rspec/unused_let/scope.rb with RBS::Inline
+
+module RuboCop
+  module Cop
+    module RSpec
+      class UnusedLet < ::RuboCop::Cop::RSpec::Base
+        # A mutable snapshot of one example/shared group. {ScopeBuilder}
+        # populates a scope with its own definitions and references as the group
+        # is entered, and its finished children are folded in via #absorb as they
+        # leave the stack. `refs`, `incl`, and `def_counts` therefore grow from "this
+        # group only" to "this whole subtree" by the time the group is resolved.
+        # Ancestors live on the traversal stack, so #unreferenced_defs receives
+        # them explicitly rather than via a pointer.
+        class Scope
+          type kind = :example | :shared
+
+          # Well-known gems whose shared contexts inject `let` definitions that
+          # single-file analysis cannot see referenced, keyed by the `type:`
+          # metadata that pulls the shared context in. When an example group
+          # (or any of its ancestors) carries a matching `type:`, the listed
+          # `let` names are treated as referenced.
+          IMPLICIT_LETS_BY_TYPE: untyped
+
+          attr_reader node: RuboCop::AST::Node
+
+          attr_reader kind: kind
+
+          attr_reader type: Symbol?
+
+          attr_reader defs: Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
+
+          attr_reader def_names: Set[Symbol]
+
+          attr_reader helper_refs: Set[Symbol]
+
+          attr_reader refs: Set[Symbol]
+
+          attr_reader incl: bool
+
+          attr_reader def_counts: Hash[Symbol, Integer]
+
+          # @rbs node: RuboCop::AST::Node
+          # @rbs kind: kind
+          # @rbs type: Symbol?
+          def initialize: (node: RuboCop::AST::Node, kind: kind, type: Symbol?) -> void
+
+          # @rbs helper: Symbol
+          # @rbs name: Symbol
+          # @rbs def_node: RuboCop::AST::Node
+          def add_definition: (Symbol helper, Symbol name, RuboCop::AST::Node def_node) -> void
+
+          # @rbs name: Symbol
+          def add_reference: (Symbol name) -> void
+
+          # A reference here can reach a `let` defined in a *descendant* group,
+          # since helper bodies run in the example's scope.
+          #
+          # @rbs name: Symbol
+          def add_helper_reference: (Symbol name) -> void
+
+          def mark_inclusion: () -> void
+
+          # Fold a finished child's subtree aggregates into this scope.
+          #
+          # @rbs child: Scope
+          def absorb: (Scope child) -> void
+
+          # An example group (`describe`/`context`/...), as opposed to a shared
+          # group (`shared_examples`/`shared_context`).
+          def example?: () -> bool
+
+          # Definitions here that no reference could ever reach, given the
+          # enclosing `ancestors` (innermost first). Shared groups never report —
+          # their `let`s may be consumed by external including groups.
+          #
+          # @rbs ancestors: Array[Scope]
+          def unreferenced_defs: (Array[Scope] ancestors) -> Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
+
+          private
+
+          attr_writer incl: bool
+
+          # Could a reference to `name` (defined here) resolve to this
+          # definition anywhere it is visible?
+          #
+          # @rbs name: Symbol
+          # @rbs ancestors: Array[Scope]
+          def reachable?: (Symbol name, Array[Scope] ancestors) -> bool
+
+          # Part of an override chain: redefined deeper in this subtree, or
+          # shadowing an ancestor's definition (either may be reached via `super`).
+          #
+          # @rbs name: Symbol
+          # @rbs ancestors: Array[Scope]
+          def overridden?: (Symbol name, Array[Scope] ancestors) -> bool
+
+          # Referenced implicitly by a known gem's shared context, keyed by the
+          # `type:` metadata visible here.
+          #
+          # @rbs name: Symbol
+          # @rbs ancestors: Array[Scope]
+          def implicitly_used?: (Symbol name, Array[Scope] ancestors) -> bool
+
+          # `type:` metadata visible here, innermost-first so an inner group's
+          # `type:` overrides an outer one.
+          #
+          # @rbs ancestors: Array[Scope]
+          def effective_type: (Array[Scope] ancestors) -> Symbol?
+        end
+      end
+    end
+  end
+end

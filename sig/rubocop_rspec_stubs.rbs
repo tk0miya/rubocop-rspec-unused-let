@@ -21,6 +21,11 @@ module RuboCop
   end
 
   module RSpec
+    # Node-pattern DSL matchers (`rspec?`, `ExampleGroups.all`, ...) mixed into
+    # objects that inspect RSpec ASTs. Only its presence is needed here.
+    module Language
+    end
+
     class ExampleGroup
       def initialize: (RuboCop::AST::Node node) -> void
 
