@@ -4,13 +4,10 @@ module RuboCop
   module Cop
     module RSpec
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
-        # A mutable snapshot of one example/shared group. {ScopeBuilder}
-        # populates a scope with its own definitions and references as the group
-        # is entered, and its finished children are folded in via #absorb as they
-        # leave the stack. `refs` and `inclusion` therefore grow from "this
-        # group only" to "this whole subtree" by the time the group is resolved.
-        # Ancestors live on the traversal stack, so #unreferenced_defs receives
-        # them explicitly rather than via a pointer.
+        # A mutable record of one example or shared group: the `let`s it defines,
+        # the references it makes (kept apart by whether they sit in a helper
+        # body or in an example), whether it pulls in a shared example group, and
+        # which of its `let`s have been resolved to a reference.
         class Scope
           type kind = :example | :shared
 
@@ -20,11 +17,13 @@ module RuboCop
 
           attr_reader defs: Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
 
-          attr_reader helper_refs: Set[Symbol]
-
           attr_reader refs: Set[Symbol]
 
+          attr_reader refs_in_example: Set[Symbol]
+
           attr_reader inclusion: bool
+
+          attr_reader resolved: Set[Symbol]
 
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
@@ -38,43 +37,25 @@ module RuboCop
           # @rbs name: Symbol
           def add_reference: (Symbol name) -> void
 
-          # A reference here can reach a `let` defined in a *descendant* group,
-          # since helper bodies run in the example's scope.
-          #
           # @rbs name: Symbol
-          def add_helper_reference: (Symbol name) -> void
+          def add_reference_in_example: (Symbol name) -> void
 
           def mark_inclusion: () -> void
 
-          # Fold a finished child's subtree aggregates into this scope.
-          #
-          # @rbs child: Scope
-          def absorb: (Scope child) -> void
+          # @rbs name: Symbol
+          def mark_referenced: (Symbol name) -> void
 
-          # An example group (`describe`/`context`/...), as opposed to a shared
-          # group (`shared_examples`/`shared_context`).
           def example?: () -> bool
 
-          # Definitions here whose name is never referenced within this group's
-          # subtree, given the enclosing `ancestors` (innermost first). Shared
-          # groups never report — their `let`s may be consumed by external
+          def defined_names: () -> Array[Symbol]
+
+          # Shared groups never report — their `let`s may be consumed by external
           # including groups.
-          #
-          # @rbs ancestors: Array[Scope]
-          def unreferenced_defs: (Array[Scope] ancestors) -> Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
+          def unreferenced_defs: () -> Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
 
           private
 
           attr_writer inclusion: bool
-
-          # Could a reference reach the definition of `name` in this group? `refs`
-          # spans the whole subtree, so a reference in this group or any nested
-          # group counts, as does a reference in an ancestor helper body (which
-          # runs in the example's scope and so resolves to this definition).
-          #
-          # @rbs name: Symbol
-          # @rbs ancestors: Array[Scope]
-          def reachable?: (Symbol name, Array[Scope] ancestors) -> bool
         end
       end
     end
