@@ -11,11 +11,15 @@ module RuboCop
         # (RuboCop lifecycle) and {Scope} (pure data and queries).
         class ScopeBuilder
           include ::RuboCop::RSpec::Language
+          include ReferenceScanner
           extend ::RuboCop::AST::NodePattern::Macros
 
-          DYNAMIC_DISPATCH_METHODS = %i[
-            send public_send __send__ method respond_to?
-          ].freeze
+          # Inclusions that evaluate the shared block in a freshly created
+          # nested example group, which cannot see the host group's descendants.
+          # Every other inclusion (`include_context`, `include_examples`, and
+          # unknown aliases) is assumed to splice hooks and helpers into the host
+          # group, where descendant examples inherit them.
+          NESTED_GROUP_INCLUDES = %i[it_behaves_like it_should_behave_like].freeze
 
           # `let` names that well-known gems' shared contexts implicitly
           # reference, hidden from single-file analysis, keyed by the `type:`
@@ -43,6 +47,8 @@ module RuboCop
           #   def let_definition: (RuboCop::AST::Node node) -> [ Symbol, (Symbol | String) ]?
           #   def inclusion_call?: (RuboCop::AST::Node node) -> bool
 
+          # @rbs @resolver: SharedExampleResolver?
+
           def_node_matcher :example_group?, <<~PATTERN
             (block (send #rspec? #ExampleGroups.all ...) ...)
           PATTERN
@@ -60,6 +66,11 @@ module RuboCop
 
           def_node_matcher :inclusion_call?, "(send nil? #Includes.all ...)"
 
+          # @rbs resolver: SharedExampleResolver?
+          def initialize(resolver = nil) #: void
+            @resolver = resolver
+          end
+
           # Build the Scope for `node` from its own region alone; nested groups
           # are left for their own traversal.
           #
@@ -70,12 +81,66 @@ module RuboCop
             helpers = helper_nodes(node)
             collect_definitions(node, scope)
             helpers.each { record_helper_references(_1, scope) }
-            collect_example_references(node, scope, helpers)
+            inclusions = [] #: Array[RuboCop::AST::Node]
+            collect_example_references(node, scope, helpers, inclusions)
             inject_implicit_references(node, scope)
+            apply_inclusions(scope, inclusions)
             scope
           end
 
           private
+
+          # Resolve each shared inclusion in the region and record the names its
+          # shared block references, so `let`s the shared block never touches
+          # stay checkable. If any inclusion cannot be resolved, fall back to
+          # marking the group as including a shared example, which silences every
+          # `let` visible at the inclusion point.
+          #
+          # @rbs scope: Scope
+          # @rbs inclusions: Array[RuboCop::AST::Node]
+          def apply_inclusions(scope, inclusions) #: void
+            return if inclusions.empty?
+
+            resolved = resolve_inclusions(inclusions)
+            if resolved
+              resolved.each { |inclusion, names| inject_shared_references(scope, inclusion, names) }
+            else
+              scope.mark_inclusion
+            end
+          end
+
+          # `[inclusion, names]` for every inclusion, or `nil` if any inclusion
+          # (or the resolver) could not resolve.
+          #
+          # @rbs inclusions: Array[RuboCop::AST::Node]
+          def resolve_inclusions(inclusions) #: Array[[ RuboCop::AST::Node, Set[Symbol] ]]?
+            return nil unless @resolver
+
+            resolver = @resolver #: SharedExampleResolver
+            inclusions.map do |inclusion|
+              names = resolver.referenced_names(inclusion)
+              return nil unless names
+
+              [inclusion, names]
+            end
+          end
+
+          # A reference in the shared block reaches a `let` here or in an
+          # ancestor (`refs_in_example`). Unless the block runs in its own nested
+          # group (`it_behaves_like`), it also reaches `let`s in descendant
+          # groups (`refs`), since its hooks run in the example's scope.
+          #
+          # @rbs scope: Scope
+          # @rbs inclusion: RuboCop::AST::Node
+          # @rbs names: Set[Symbol]
+          def inject_shared_references(scope, inclusion, names) #: void
+            node = inclusion #: untyped
+            nested_group = NESTED_GROUP_INCLUDES.include?(node.method_name)
+            names.each do |name|
+              scope.add_reference_in_example(name)
+              scope.add_reference(name) unless nested_group
+            end
+          end
 
           # A well-known gem's shared context (pulled in by `type:` metadata)
           # can reference `let` names that single-file analysis never sees.
@@ -109,19 +174,20 @@ module RuboCop
           # References in `node`'s region that sit *outside* its helper bodies
           # (examples and any other group-level code), collected into
           # `refs_in_example`. Stops at nested spec groups and skips the helper
-          # definitions, whose references belong to `refs`. Records a shared
-          # inclusion found along the way.
+          # definitions, whose references belong to `refs`. Collects the shared
+          # inclusion calls found along the way into `inclusions`.
           #
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           # @rbs helpers: Array[RuboCop::AST::Node]
-          def collect_example_references(node, scope, helpers) #: void
+          # @rbs inclusions: Array[RuboCop::AST::Node]
+          def collect_example_references(node, scope, helpers, inclusions) #: void
             node.each_child_node do |child|
               next if spec_group?(child) || helpers.any? { _1.equal?(child) }
 
               references_in(child).each { scope.add_reference_in_example(_1) }
-              scope.mark_inclusion if inclusion_call?(child)
-              collect_example_references(child, scope, helpers)
+              inclusions << child if inclusion_call?(child)
+              collect_example_references(child, scope, helpers, inclusions)
             end
           end
 
@@ -142,23 +208,6 @@ module RuboCop
           def record_helper_references(node, scope) #: void
             references_in(node).each { scope.add_reference(_1) }
             node.each_child_node { record_helper_references(_1, scope) }
-          end
-
-          # `let`-visible names a single send node references: a bare (nil
-          # receiver) call, plus any dynamic-dispatch target such as `send(:foo)`.
-          #
-          # @rbs node: RuboCop::AST::Node
-          def references_in(node) #: Array[Symbol]
-            return [] unless node.send_type?
-
-            send = node #: untyped
-            names = [] #: Array[Symbol]
-            names << send.method_name if send.receiver.nil?
-            if DYNAMIC_DISPATCH_METHODS.include?(send.method_name)
-              arg = send.first_argument
-              names << arg.value.to_sym if arg&.type?(:sym, :str)
-            end
-            names
           end
 
           # `def foo` written at an example group's level becomes an instance

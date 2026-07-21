@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require_relative "unused_let/reference_scanner"
 require_relative "unused_let/scope"
+require_relative "unused_let/shared_example_resolver"
 require_relative "unused_let/scope_builder"
 
 module RuboCop
@@ -15,16 +17,23 @@ module RuboCop
       # for its side effects (e.g. `let!(:user) { create(:user) }`), you can opt
       # out with `CheckLetBang: false`.
       #
+      # Shared example inclusions (`it_behaves_like`, `include_examples`,
+      # `include_context`, ...) are resolved to their `shared_examples` /
+      # `shared_context` definitions in the same file, and the shared block is
+      # searched as if it were written at the inclusion point. A `let` the
+      # shared block never references is therefore still flagged.
+      #
       # To avoid false positives, the cop deliberately stays silent whenever it
       # cannot see every possible reference:
       #
-      # * `let` definitions inside a `shared_examples`/`shared_context` block are
-      #   ignored, because their consumers live in the (possibly external)
-      #   including example groups.
-      # * When an example group's subtree contains a shared example inclusion
-      #   (`it_behaves_like`, `include_examples`, `include_context`, ...), the
-      #   `let` definitions visible at that inclusion point are ignored, because
-      #   the (possibly external) shared block may reference them.
+      # * `let` definitions inside a `shared_examples`/`shared_context` block
+      #   (including its nested groups) are ignored, because their consumers
+      #   live in the (possibly external) including example groups.
+      # * When a shared example inclusion cannot be resolved (the name is not a
+      #   literal, no matching definition is found in the file, or the name is
+      #   defined more than once), the `let` definitions visible at that
+      #   inclusion point are ignored, because the unknown shared block may
+      #   reference them.
       # * `let` definitions whose name is implicitly consumed by a well-known
       #   gem's shared context (identified by the `type:` metadata on an
       #   example group or one of its ancestors) are ignored. Currently this
@@ -85,7 +94,7 @@ module RuboCop
         def on_new_investigation #: void
           super
           @stack = []
-          @builder = ScopeBuilder.new
+          @builder = ScopeBuilder.new(SharedExampleResolver.new(ast: processed_source.ast))
         end
 
         # RuboCop visits nested groups on their own `on_block`, so we never
@@ -112,6 +121,10 @@ module RuboCop
 
           scope = stack.pop
           return unless scope
+          # A `let` anywhere inside a shared group may be consumed by the
+          # (possibly external) including groups, so never report it. After the
+          # pop, `stack` holds this group's ancestors.
+          return if stack.any? { !_1.example? }
 
           report(scope)
         end

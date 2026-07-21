@@ -1,0 +1,23 @@
+# Generated from lib/rubocop/cop/rspec/unused_let/reference_scanner.rb with RBS::Inline
+
+module RuboCop
+  module Cop
+    module RSpec
+      class UnusedLet < ::RuboCop::Cop::RSpec::Base
+        # Extracts the `let`-visible names a single send node references. Shared
+        # by {ScopeBuilder} (scanning a group's own region) and
+        # {SharedExampleResolver} (scanning a resolved shared block), so the
+        # notion of "what counts as a reference" stays in one place.
+        module ReferenceScanner
+          DYNAMIC_DISPATCH_METHODS: untyped
+
+          # A bare (nil receiver) call, plus any dynamic-dispatch target such as
+          # `send(:foo)` / `public_send("foo")`.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def references_in: (RuboCop::AST::Node node) -> Array[Symbol]
+        end
+      end
+    end
+  end
+end

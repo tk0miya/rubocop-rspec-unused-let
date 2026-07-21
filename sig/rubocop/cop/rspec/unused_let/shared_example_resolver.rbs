@@ -1,0 +1,68 @@
+# Generated from lib/rubocop/cop/rspec/unused_let/shared_example_resolver.rb with RBS::Inline
+
+module RuboCop
+  module Cop
+    module RSpec
+      class UnusedLet < ::RuboCop::Cop::RSpec::Base
+        # Resolves a shared example inclusion (`it_behaves_like`,
+        # `include_examples`, `include_context`, ...) to the set of `let`-visible
+        # names its shared block references, so the cop can treat those names as
+        # referenced at the inclusion point instead of blanket-silencing every
+        # `let` in scope.
+        #
+        # Definitions are looked up in the inspected file. `#referenced_names`
+        # returns `nil` whenever the inclusion cannot be fully resolved — the
+        # name is not a literal, no matching definition exists, the name is
+        # defined more than once, or a nested inclusion is itself unresolvable —
+        # and the caller then falls back to the conservative behavior.
+        class SharedExampleResolver
+          include ::RuboCop::RSpec::Language
+
+          include ReferenceScanner
+
+          extend ::RuboCop::AST::NodePattern::Macros
+
+          def shared_group_definition: (RuboCop::AST::Node node) -> (Symbol | String)?
+
+          def inclusion_call?: (RuboCop::AST::Node node) -> bool
+
+          @ast: RuboCop::AST::Node?
+
+          @index: Hash[Symbol | String, Array[RuboCop::AST::Node]]?
+
+          # @rbs ast: RuboCop::AST::Node?
+          def initialize: (ast: RuboCop::AST::Node?) -> void
+
+          # The names the shared block pulled in by `inclusion` references,
+          # transitively through nested inclusions. `nil` if unresolvable.
+          #
+          # @rbs inclusion: RuboCop::AST::Node
+          def referenced_names: (RuboCop::AST::Node inclusion) -> Set[Symbol]?
+
+          private
+
+          # @rbs name: Symbol | String
+          # @rbs seen: Array[Symbol | String]
+          def collect: (Symbol | String name, Array[Symbol | String] seen) -> Set[Symbol]?
+
+          # @rbs inclusion: RuboCop::AST::Node
+          # @rbs seen: Array[Symbol | String]
+          def nested_names: (RuboCop::AST::Node inclusion, Array[Symbol | String] seen) -> Set[Symbol]?
+
+          # The single shared group definition registered under `name`, or `nil`
+          # when it is missing or ambiguous (defined more than once).
+          #
+          # @rbs name: Symbol | String
+          def resolve_definition: (Symbol | String name) -> RuboCop::AST::Node?
+
+          def index: () -> Hash[Symbol | String, Array[RuboCop::AST::Node]]
+
+          def build_index: () -> Hash[Symbol | String, Array[RuboCop::AST::Node]]
+
+          # @rbs arg: RuboCop::AST::Node?
+          def literal_name: (RuboCop::AST::Node? arg) -> (Symbol | String)?
+        end
+      end
+    end
+  end
+end

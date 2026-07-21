@@ -310,21 +310,13 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
       end
     end
 
-    context "when a shared example inclusion is in scope" do
+    context "when a shared example inclusion cannot be resolved" do
       it "ignores lets in the including group" do
         expect_no_offenses(<<~RUBY)
           RSpec.describe Foo do
             let(:name) { "value" }
 
             it_behaves_like "a thing"
-          end
-        RUBY
-      end
-
-      it "ignores lets defined in the shared_examples block" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.shared_examples "a thing" do
-            let(:helper) { 1 }
           end
         RUBY
       end
@@ -339,6 +331,304 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
             context "other" do
               let(:unused) { 1 }
               ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { expect(true).to be(true) }
+            end
+          end
+        RUBY
+      end
+
+      it "ignores lets when the inclusion name is dynamic" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            it { expect(1).to eq(1) }
+          end
+
+          RSpec.describe Foo do
+            let(:name) { "value" }
+
+            it_behaves_like shared_name
+          end
+        RUBY
+      end
+
+      it "ignores lets when the name kind differs (symbol vs string)" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            it { expect(1).to eq(1) }
+          end
+
+          RSpec.describe Foo do
+            let(:name) { "value" }
+
+            it_behaves_like :"a thing"
+          end
+        RUBY
+      end
+
+      it "ignores lets when the name is defined more than once" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            it { expect(1).to eq(1) }
+          end
+
+          RSpec.shared_examples "a thing" do
+            it { expect(2).to eq(2) }
+          end
+
+          RSpec.describe Foo do
+            let(:name) { "value" }
+
+            it_behaves_like "a thing"
+          end
+        RUBY
+      end
+
+      it "ignores lets when a transitively included name is unknown" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            it_behaves_like "an external thing"
+          end
+
+          RSpec.describe Foo do
+            let(:name) { "value" }
+
+            it_behaves_like "a thing"
+          end
+        RUBY
+      end
+
+      it "ignores lets when mutually inclusive shared blocks form a cycle" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "ping" do
+            it_behaves_like "pong"
+          end
+
+          RSpec.shared_examples "pong" do
+            it_behaves_like "ping"
+          end
+
+          RSpec.describe Foo do
+            let(:name) { "value" }
+
+            it_behaves_like "ping"
+          end
+        RUBY
+      end
+    end
+
+    context "when a shared example inclusion resolves to a same-file definition" do
+      it "flags a let the shared block does not reference" do
+        expect_offense(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            it { expect(1).to eq(1) }
+          end
+
+          RSpec.describe Foo do
+            let(:unused) { 1 }
+            ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+            it_behaves_like "a thing"
+          end
+        RUBY
+      end
+
+      it "flags a let visible at a nested inclusion point" do
+        expect_offense(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            it { expect(1).to eq(1) }
+          end
+
+          RSpec.describe Foo do
+            let(:unused) { 1 }
+            ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+            context "when shared" do
+              it_behaves_like "a thing"
+            end
+          end
+        RUBY
+      end
+
+      it "does not flag a let the shared block references" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            it { expect(name).to eq("value") }
+          end
+
+          RSpec.describe Foo do
+            let(:name) { "value" }
+
+            it_behaves_like "a thing"
+          end
+        RUBY
+      end
+
+      it "does not flag a let the shared block references dynamically" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            it { expect(send(:name)).to eq("value") }
+          end
+
+          RSpec.describe Foo do
+            let(:name) { "value" }
+
+            it_behaves_like "a thing"
+          end
+        RUBY
+      end
+
+      it "does not flag a let referenced from a group nested in the shared block" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            context "when nested" do
+              it { expect(name).to eq("value") }
+            end
+          end
+
+          RSpec.describe Foo do
+            let(:name) { "value" }
+
+            it_behaves_like "a thing"
+          end
+        RUBY
+      end
+
+      it "resolves include_examples" do
+        expect_offense(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            it { expect(1).to eq(1) }
+          end
+
+          RSpec.describe Foo do
+            let(:unused) { 1 }
+            ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+            include_examples "a thing"
+          end
+        RUBY
+      end
+
+      it "resolves include_context to a shared_context" do
+        expect_offense(<<~RUBY)
+          RSpec.shared_context "shared setup" do
+            before { do_setup }
+          end
+
+          RSpec.describe Foo do
+            let(:unused) { 1 }
+            ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+            include_context "shared setup"
+          end
+        RUBY
+      end
+
+      it "does not flag a let referenced by a transitively included shared block" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "inner thing" do
+            it { expect(name).to eq("value") }
+          end
+
+          RSpec.shared_examples "outer thing" do
+            it_behaves_like "inner thing"
+          end
+
+          RSpec.describe Foo do
+            let(:name) { "value" }
+
+            it_behaves_like "outer thing"
+          end
+        RUBY
+      end
+
+      it "resolves a symbol-named shared block" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples :a_thing do
+            it { expect(name).to eq("value") }
+          end
+
+          RSpec.describe Foo do
+            let(:name) { "value" }
+
+            it_behaves_like :a_thing
+          end
+        RUBY
+      end
+
+      it "does not let an include_context reference reach a sibling's let" do
+        expect_offense(<<~RUBY)
+          RSpec.shared_context "uses name" do
+            before { name }
+          end
+
+          RSpec.describe Foo do
+            context "includes" do
+              include_context "uses name"
+            end
+
+            context "defines" do
+              let(:name) { 1 }
+              ^^^^^^^^^^ `let(:name)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { do_something }
+            end
+          end
+        RUBY
+      end
+
+      it "lets an include_context reference reach a descendant let" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_context "uses record" do
+            before { prepare(record) }
+          end
+
+          RSpec.describe Foo do
+            include_context "uses record"
+
+            context "when nested" do
+              let(:record) { 1 }
+
+              it { expect(true).to be(true) }
+            end
+          end
+        RUBY
+      end
+
+      it "does not let an it_behaves_like reference reach a descendant let" do
+        expect_offense(<<~RUBY)
+          RSpec.shared_examples "uses record" do
+            it { expect(record).to eq(1) }
+          end
+
+          RSpec.describe Foo do
+            it_behaves_like "uses record"
+
+            context "when nested" do
+              let(:record) { 1 }
+              ^^^^^^^^^^^^ `let(:record)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { do_something }
+            end
+          end
+        RUBY
+      end
+    end
+
+    context "when a let is defined inside a shared_examples block" do
+      it "ignores a let at the shared block's top level" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            let(:helper) { 1 }
+          end
+        RUBY
+      end
+
+      it "ignores a let in a group nested inside the shared block" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            context "when nested" do
+              let(:maybe_used_by_includer) { 1 }
 
               it { expect(true).to be(true) }
             end

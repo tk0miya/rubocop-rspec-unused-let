@@ -13,6 +13,8 @@ module RuboCop
 
         def range_by_whole_lines: (Parser::Source::Range range, ?include_final_newline: bool) -> Parser::Source::Range
 
+        def processed_source: () -> untyped
+
         def self.def_node_matcher: (Symbol, String) -> void
 
         def self.def_node_search: (Symbol, String) -> void

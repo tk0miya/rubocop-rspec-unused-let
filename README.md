@@ -55,24 +55,43 @@ such as `send(:name)` / `public_send("name")` are also treated as usages.
 
 ## How it handles `shared_examples`
 
-Because RuboCop analyzes one file at a time, a `let` can be consumed by a shared
-example block defined in another file. To avoid false positives, the cop stays
-silent whenever it cannot see every possible reference:
+Shared example inclusions (`it_behaves_like`, `include_examples`,
+`include_context`, ...) are **resolved to their definitions** in the same file,
+and the shared block is searched as if it were written at the inclusion point.
+A `let` the shared block references is kept; a `let` it never touches is still
+flagged.
 
-- `let` definitions **inside** a `shared_examples` / `shared_context` block are
-  ignored (their consumers are the including groups, which may be external).
-- When an example group's subtree contains a shared example inclusion
-  (`it_behaves_like`, `include_examples`, `include_context`, ...), the `let`
-  definitions **visible at that inclusion point** are ignored. Sibling subtrees
-  that do not include shared examples are still checked.
+```ruby
+RSpec.shared_examples "uses name" do
+  it { expect(name).to eq("foo") }
+end
+
+RSpec.describe Foo do
+  let(:name) { "foo" }   # not flagged: referenced by the shared block
+  let(:unused) { 1 }     # flagged: the shared block is known not to use it
+
+  it_behaves_like "uses name"
+end
+```
+
+When an inclusion cannot be resolved — the name is not a literal, no definition
+is found in the file, or the same name is defined more than once — the cop
+falls back to its conservative behavior and stays silent about every `let` the
+unknown shared block might reference:
+
+- `let` definitions **inside** a `shared_examples` / `shared_context` block
+  (including its nested groups) are always ignored (their consumers are the
+  including groups, which may be external).
+- `let` definitions **visible at an unresolved inclusion point** are ignored.
+  Sibling subtrees that do not include shared examples are still checked.
 
 ```ruby
 RSpec.describe Foo do
-  let(:a) { 1 }              # skipped: visible at the inclusion below
+  let(:a) { 1 }              # skipped: visible at the unresolved inclusion below
 
   context "with shared" do
     let(:b) { 2 }            # skipped: same
-    it_behaves_like "something"
+    it_behaves_like "defined elsewhere"  # not in this file, unresolvable
   end
 
   context "other" do
@@ -140,8 +159,11 @@ end
 
 ## Known limitations
 
-- Analysis is limited to a single file; references reachable only across files
-  (e.g. through external shared examples) are intentionally not flagged.
+- Shared example resolution is limited to definitions in the same file.
+  Inclusions of shared examples defined in other files cannot be resolved, so
+  the `let` definitions visible at those inclusions are left unchecked.
+- `let` definitions inside a `shared_examples` / `shared_context` block are
+  never checked, because any file may include the block and reference them.
 
 ## Development
 

@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+- `RSpec/UnusedLet` now resolves shared example inclusions
+  (`it_behaves_like`, `include_examples`, `include_context`, ...) to their
+  `shared_examples` / `shared_context` definitions in the same file and
+  searches the shared block as if it were written at the inclusion point.
+  A `let` that the resolved shared block never references is now flagged,
+  where previously any inclusion in scope silenced every visible `let`.
+  Unresolvable inclusions (dynamic names, definitions in other files, or
+  names defined more than once) keep the previous conservative behavior.
+- Fix a false positive in `RSpec/UnusedLet` where `let` definitions inside an
+  example group nested within a `shared_examples` / `shared_context` block
+  were checked even though external including groups may reference them.
 - `RSpec/UnusedLet` now recognizes `let` definitions consumed by
   well-known gems' shared contexts and treats them as used. Currently
   supports [rspec-validator_spec_helper](https://github.com/izumin5210/rspec-validator_spec_helper):
