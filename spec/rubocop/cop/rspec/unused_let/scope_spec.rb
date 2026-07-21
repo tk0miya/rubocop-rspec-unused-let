@@ -8,14 +8,13 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::Scope do
   let(:def_node) { :a_let_node }
 
   describe "#unreferenced_defs" do
-    subject { scope.unreferenced_defs(ancestors) }
+    subject { scope.unreferenced_defs }
 
     let(:scope) { build_scope }
-    let(:ancestors) { [] }
 
     before { scope.add_definition(:let, :value, def_node) }
 
-    context "when the definition is never referenced" do
+    context "when the definition is never marked referenced" do
       it { is_expected.to contain_exactly([:let, :value, def_node]) }
     end
 
@@ -25,52 +24,34 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::Scope do
       it { is_expected.to be_empty }
     end
 
-    context "when the name is referenced in the subtree" do
-      before { scope.add_reference(:value) }
+    context "when the name has been marked referenced" do
+      before { scope.mark_referenced(:value) }
 
       it { is_expected.to be_empty }
     end
 
-    context "when only a different name is referenced" do
-      before { scope.add_reference(:other) }
+    context "when only a different name has been marked referenced" do
+      before { scope.mark_referenced(:other) }
 
       it { is_expected.to contain_exactly([:let, :value, def_node]) }
     end
+  end
 
-    context "when a shared inclusion sits in the scope itself" do
-      before { scope.mark_inclusion }
+  describe "#defined_names" do
+    subject { scope.defined_names }
 
-      it { is_expected.to be_empty }
+    let(:scope) { build_scope }
+
+    before do
+      scope.add_definition(:let, :first, :first_node)
+      scope.add_definition(:let!, :second, :second_node)
     end
 
-    context "when an absorbed child brings a reference" do
-      before do
-        child = build_scope
-        child.add_reference(:value)
-        scope.absorb(child)
-      end
+    it { is_expected.to eq(%i[first second]) }
+  end
 
-      it { is_expected.to be_empty }
-    end
-
-    context "when an absorbed child brings a shared inclusion" do
-      before do
-        child = build_scope
-        child.mark_inclusion
-        scope.absorb(child)
-      end
-
-      it { is_expected.to be_empty }
-    end
-
-    context "when an ancestor's helper body references the name" do
-      let(:ancestors) do
-        ancestor = build_scope
-        ancestor.add_helper_reference(:value)
-        [ancestor]
-      end
-
-      it { is_expected.to be_empty }
-    end
+  describe "#example?" do
+    it { expect(build_scope(kind: :example).example?).to be(true) }
+    it { expect(build_scope(kind: :shared).example?).to be(false) }
   end
 end

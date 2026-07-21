@@ -61,15 +61,16 @@ module RuboCop
           def_node_matcher :inclusion_call?, "(send nil? #Includes.all ...)"
 
           # Build the Scope for `node` from its own region alone; nested groups
-          # are left for their own traversal and folded in later via Scope#absorb.
+          # are left for their own traversal.
           #
           # @rbs node: RuboCop::AST::Node
           def build_from(node) #: Scope
             kind = example_group?(node) ? :example : :shared #: Scope::kind
             scope = Scope.new(node: node, kind: kind)
+            helpers = helper_nodes(node)
             collect_definitions(node, scope)
-            collect_region_references(node, scope)
-            collect_helper_references(node, scope)
+            helpers.each { record_helper_references(_1, scope) }
+            collect_example_references(node, scope, helpers)
             inject_implicit_references(node, scope)
             scope
           end
@@ -78,11 +79,10 @@ module RuboCop
 
           # A well-known gem's shared context (pulled in by `type:` metadata)
           # can reference `let` names that single-file analysis never sees.
-          # Record them exactly as a real helper on this group would be: a real
-          # reference lands in both sets, so mirror that. `refs` justifies a
-          # `let` defined here (or, via #absorb, in an ancestor group), while
-          # `helper_refs` reaches `let`s in descendant groups, since helper
-          # bodies run in the example's scope.
+          # Record them exactly as a real helper on this group would be: an
+          # example reference (justifying a `let` here or in an ancestor) *and* a
+          # helper reference (reaching `let`s in descendant groups, since helper
+          # bodies run in the example's scope).
           #
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
@@ -92,8 +92,8 @@ module RuboCop
             return unless names
 
             names.each do |name|
+              scope.add_reference_in_example(name)
               scope.add_reference(name)
-              scope.add_helper_reference(name)
             end
           end
 
@@ -106,39 +106,41 @@ module RuboCop
             end
           end
 
-          # References and inclusions in `node`'s own region, stopping at nested
-          # spec groups (each handled by its own build).
+          # References in `node`'s region that sit *outside* its helper bodies
+          # (examples and any other group-level code), collected into
+          # `refs_in_example`. Stops at nested spec groups and skips the helper
+          # definitions, whose references belong to `refs`. Records a shared
+          # inclusion found along the way.
           #
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
-          def collect_region_references(node, scope) #: void
+          # @rbs helpers: Array[RuboCop::AST::Node]
+          def collect_example_references(node, scope, helpers) #: void
             node.each_child_node do |child|
-              next if spec_group?(child)
+              next if spec_group?(child) || helpers.any? { _1.equal?(child) }
 
-              references_in(child).each { scope.add_reference(_1) }
+              references_in(child).each { scope.add_reference_in_example(_1) }
               scope.mark_inclusion if inclusion_call?(child)
-              collect_region_references(child, scope)
+              collect_example_references(child, scope, helpers)
             end
           end
 
-          # References inside the group's own `let`/`subject`/hook/`def` bodies.
+          # The group's own `let`/`subject`/hook/`def` definitions, whose bodies
+          # run in the example's scope.
           #
           # @rbs node: RuboCop::AST::Node
-          # @rbs scope: Scope
-          def collect_helper_references(node, scope) #: void
+          def helper_nodes(node) #: Array[RuboCop::AST::Node]
             group = RuboCop::RSpec::ExampleGroup.new(node)
-            helpers = group.lets +
-                      group.subjects +
-                      group.hooks.map(&:to_node) +
-                      method_definitions_in(node)
-
-            helpers.each { record_helper_references(_1, scope) }
+            group.lets +
+              group.subjects +
+              group.hooks.map(&:to_node) +
+              method_definitions_in(node)
           end
 
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           def record_helper_references(node, scope) #: void
-            references_in(node).each { scope.add_helper_reference(_1) }
+            references_in(node).each { scope.add_reference(_1) }
             node.each_child_node { record_helper_references(_1, scope) }
           end
 

@@ -67,7 +67,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
       end
     end
 
-    describe "refs" do
+    describe "refs_in_example" do
       context "when the name is called directly in an example" do
         let(:source) { <<~RUBY }
           describe "target" do
@@ -75,7 +75,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
           end
         RUBY
 
-        it { expect(subject.refs).to include(:value) }
+        it { expect(subject.refs_in_example).to include(:value) }
       end
 
       %i[send public_send __send__ method respond_to?].each do |dispatch|
@@ -86,7 +86,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
             end
           RUBY
 
-          it { expect(subject.refs).to include(:value) }
+          it { expect(subject.refs_in_example).to include(:value) }
         end
       end
 
@@ -97,7 +97,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
           end
         RUBY
 
-        it { expect(subject.refs).to include(:value) }
+        it { expect(subject.refs_in_example).to include(:value) }
       end
 
       context "when the reference sits inside a nested group" do
@@ -110,12 +110,12 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
         RUBY
 
         it "leaves the reference to the nested group's own scope" do
-          expect(subject.refs).not_to include(:value)
+          expect(subject.refs_in_example).not_to include(:value)
         end
       end
     end
 
-    describe "helper_refs" do
+    describe "refs" do
       context "when a hook body references the name" do
         let(:source) { <<~RUBY }
           describe "target" do
@@ -123,7 +123,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
           end
         RUBY
 
-        it { expect(subject.helper_refs).to include(:value) }
+        it { expect(subject.refs).to include(:value) }
       end
 
       context "when a hook body dispatches the name dynamically" do
@@ -133,7 +133,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
           end
         RUBY
 
-        it { expect(subject.helper_refs).to include(:value) }
+        it { expect(subject.refs).to include(:value) }
       end
 
       context "when a `let` body references the name" do
@@ -143,7 +143,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
           end
         RUBY
 
-        it { expect(subject.helper_refs).to include(:value) }
+        it { expect(subject.refs).to include(:value) }
       end
 
       context "when a `subject` body references the name" do
@@ -153,7 +153,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
           end
         RUBY
 
-        it { expect(subject.helper_refs).to include(:value) }
+        it { expect(subject.refs).to include(:value) }
       end
 
       context "when a `def` helper at the group's level references the name" do
@@ -165,7 +165,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
           end
         RUBY
 
-        it { expect(subject.helper_refs).to include(:value) }
+        it { expect(subject.refs).to include(:value) }
       end
 
       context "when the referencing `def` helper sits inside a nested group" do
@@ -180,7 +180,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
         RUBY
 
         it "leaves the reference to the nested group's own scope" do
-          expect(subject.helper_refs).not_to include(:value)
+          expect(subject.refs).not_to include(:value)
         end
       end
     end
@@ -213,16 +213,16 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
       end
     end
 
-    describe "refs and helper_refs injected via `type:` metadata" do
+    describe "references injected via `type:` metadata" do
       context "when the group carries `type: :validator`" do
         let(:source) { <<~RUBY }
           describe "target", type: :validator do
           end
         RUBY
 
-        it "records the known gem's names as region and helper references" do
+        it "records the known gem's names as example and helper references" do
+          expect(subject.refs_in_example).to include(:value, :attribute_names, :options)
           expect(subject.refs).to include(:value, :attribute_names, :options)
-          expect(subject.helper_refs).to include(:value, :attribute_names, :options)
         end
       end
 
@@ -233,7 +233,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
         RUBY
 
         it "injects nothing" do
-          expect(subject.refs).not_to include(:value)
+          expect(subject.refs_in_example).not_to include(:value)
         end
       end
 
@@ -244,7 +244,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
         RUBY
 
         it "injects nothing" do
-          expect(subject.refs).not_to include(:value)
+          expect(subject.refs_in_example).not_to include(:value)
         end
       end
     end

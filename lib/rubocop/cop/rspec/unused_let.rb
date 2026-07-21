@@ -89,16 +89,22 @@ module RuboCop
         end
 
         # RuboCop visits nested groups on their own `on_block`, so we never
-        # descend manually.
+        # descend manually. On the way in the ancestors are exactly the scopes
+        # already on the stack, so resolve this group's references against them
+        # now; descendant groups resolve against this one later, as they are
+        # entered.
         #
         # @rbs node: RuboCop::AST::Node
         def on_block(node) #: void
-          stack.push(builder.build_from(node)) if builder.spec_group?(node)
+          return unless builder.spec_group?(node)
+
+          scope = builder.build_from(node)
+          mark(scope)
+          stack.push(scope)
         end
 
-        # A group's subtree is complete by the time it is left, so resolve it
-        # here against the ancestors still on the stack, then fold it into its
-        # parent.
+        # A group's `let`s know whether they were referenced once its whole
+        # subtree has been entered, which is complete by the time it is left.
         #
         # @rbs node: RuboCop::AST::Node
         def after_block(node) #: void
@@ -107,10 +113,7 @@ module RuboCop
           scope = stack.pop
           return unless scope
 
-          # `stack` is outermost-first (pushed pre-order); resolution wants the
-          # ancestor chain innermost-first.
-          resolve(scope, stack.reverse)
-          stack.last&.absorb(scope)
+          report(scope)
         end
 
         private
@@ -118,10 +121,54 @@ module RuboCop
         attr_reader :stack #: Array[Scope]
         attr_reader :builder #: ScopeBuilder
 
+        # Resolve `scope`'s references against the enclosing groups (the scopes
+        # currently on the stack) and mark every definition they reach.
+        #
+        # @rbs scope: Scope
+        def mark(scope) #: void
+          ancestors = stack
+          mark_upward(scope, ancestors)
+          mark_downward(scope, ancestors)
+          mark_inclusion(scope, ancestors) if scope.inclusion
+        end
+
+        # A reference made in this group, whether in an example or a helper body,
+        # reaches a `let` defined here or in an enclosing group.
+        #
         # @rbs scope: Scope
         # @rbs ancestors: Array[Scope]
-        def resolve(scope, ancestors) #: void
-          scope.unreferenced_defs(ancestors).each do |helper, name, let_node|
+        def mark_upward(scope, ancestors) #: void
+          (scope.refs | scope.refs_in_example).each do |name|
+            scope.mark_referenced(name)
+            ancestors.each { _1.mark_referenced(name) }
+          end
+        end
+
+        # A helper body in an enclosing group can reference a `let` defined here,
+        # since it runs in the example's scope.
+        #
+        # @rbs scope: Scope
+        # @rbs ancestors: Array[Scope]
+        def mark_downward(scope, ancestors) #: void
+          scope.defs.each do |_, name, _|
+            scope.mark_referenced(name) if ancestors.any? { _1.refs.include?(name) }
+          end
+        end
+
+        # A shared inclusion may reference any `let` visible where it sits, so
+        # treat every definition in scope at that point as referenced.
+        #
+        # @rbs scope: Scope
+        # @rbs ancestors: Array[Scope]
+        def mark_inclusion(scope, ancestors) #: void
+          [scope, *ancestors].each do |group|
+            group.defined_names.each { group.mark_referenced(_1) }
+          end
+        end
+
+        # @rbs scope: Scope
+        def report(scope) #: void
+          scope.unreferenced_defs.each do |helper, name, let_node|
             next if helper == :let! && !cop_config["CheckLetBang"]
 
             add_offense_for(let_node, helper, name)

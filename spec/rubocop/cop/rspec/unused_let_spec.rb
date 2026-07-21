@@ -215,6 +215,62 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         end
       end
 
+      context "when the same name is defined in sibling groups" do
+        it "flags the sibling that never references it, despite the other" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              context "referenced" do
+                let(:value) { 1 }
+
+                it { expect(value).to eq(1) }
+              end
+
+              context "unreferenced" do
+                let(:value) { 2 }
+                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it { do_something }
+              end
+            end
+          RUBY
+        end
+
+        it "does not let a sibling's plain reference reach the other's let" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              context "references a name it never defines" do
+                it { expect(value).to eq(1) }
+              end
+
+              context "defines the name but never uses it" do
+                let(:value) { 2 }
+                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it { do_something }
+              end
+            end
+          RUBY
+        end
+
+        it "does not let a sibling's helper reference reach the other's let" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              context "references a name from a helper" do
+                let(:proxy) { value }
+                ^^^^^^^^^^^ `let(:proxy)` is not referenced anywhere. Remove it or reference it in an example.
+              end
+
+              context "defines the name but never uses it" do
+                let(:value) { 2 }
+                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it { do_something }
+              end
+            end
+          RUBY
+        end
+      end
+
       context "when `type: :validator` (rspec-validator_spec_helper) is in scope" do
         it "ignores `let(:value)` overridden at the top level" do
           expect_no_offenses(<<~RUBY)

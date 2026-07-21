@@ -81,14 +81,16 @@ module RuboCop
         def on_new_investigation: () -> void
 
         # RuboCop visits nested groups on their own `on_block`, so we never
-        # descend manually.
+        # descend manually. On the way in the ancestors are exactly the scopes
+        # already on the stack, so resolve this group's references against them
+        # now; descendant groups resolve against this one later, as they are
+        # entered.
         #
         # @rbs node: RuboCop::AST::Node
         def on_block: (RuboCop::AST::Node node) -> void
 
-        # A group's subtree is complete by the time it is left, so resolve it
-        # here against the ancestors still on the stack, then fold it into its
-        # parent.
+        # A group's `let`s know whether they were referenced once its whole
+        # subtree has been entered, which is complete by the time it is left.
         #
         # @rbs node: RuboCop::AST::Node
         def after_block: (RuboCop::AST::Node node) -> void
@@ -99,9 +101,35 @@ module RuboCop
 
         attr_reader builder: ScopeBuilder
 
+        # Resolve `scope`'s references against the enclosing groups (the scopes
+        # currently on the stack) and mark every definition they reach.
+        #
+        # @rbs scope: Scope
+        def mark: (Scope scope) -> void
+
+        # A reference made in this group, whether in an example or a helper body,
+        # reaches a `let` defined here or in an enclosing group.
+        #
         # @rbs scope: Scope
         # @rbs ancestors: Array[Scope]
-        def resolve: (Scope scope, Array[Scope] ancestors) -> void
+        def mark_upward: (Scope scope, Array[Scope] ancestors) -> void
+
+        # A helper body in an enclosing group can reference a `let` defined here,
+        # since it runs in the example's scope.
+        #
+        # @rbs scope: Scope
+        # @rbs ancestors: Array[Scope]
+        def mark_downward: (Scope scope, Array[Scope] ancestors) -> void
+
+        # A shared inclusion may reference any `let` visible where it sits, so
+        # treat every definition in scope at that point as referenced.
+        #
+        # @rbs scope: Scope
+        # @rbs ancestors: Array[Scope]
+        def mark_inclusion: (Scope scope, Array[Scope] ancestors) -> void
+
+        # @rbs scope: Scope
+        def report: (Scope scope) -> void
 
         # @rbs let_node: RuboCop::AST::Node
         # @rbs helper: Symbol
