@@ -66,6 +66,10 @@ module RuboCop
             kind == :example
           end
 
+          def shared? #: bool
+            kind == :shared
+          end
+
           def defined_names #: Array[Symbol]
             defs.map { |_, name, _| name }
           end
