@@ -32,6 +32,11 @@ module RuboCop
       #   rspec-validator_spec_helper}, whose `type: :validator` groups inject
       #   a shared subject that dereferences `value`, `attribute_names`, and
       #   `options` via `eval`.
+      # * Helper specs (rspec-rails `type: :helper` groups, or spec files under
+      #   `spec/helpers`) are skipped by default, because the described module
+      #   is auto-included into the example group and its (externally defined)
+      #   methods may reference any `let` in scope, invisibly to single-file
+      #   analysis. Set `CheckHelperSpecs: true` to check them anyway.
       #
       # Dynamic references such as `send(:foo)` are treated as usages.
       #
@@ -67,6 +72,23 @@ module RuboCop
       #     it { expect(Widget.count).to eq(1) }
       #   end
       #
+      # @example CheckHelperSpecs: false (default)
+      #   # good - a helper spec's `let`s may be referenced by the auto-included
+      #   # module's methods, so they are not flagged
+      #   describe MyHelper, type: :helper do
+      #     let(:current_user) { User.new }
+      #
+      #     it { expect(helper.greeting).to eq("Hi") }
+      #   end
+      #
+      # @example CheckHelperSpecs: true
+      #   # bad - helper specs are checked like any other group
+      #   describe MyHelper, type: :helper do
+      #     let(:unused) { 1 }
+      #
+      #     it { expect(helper.greeting).to eq("Hi") }
+      #   end
+      #
       # @safety
       #   Autocorrect deletes the flagged `let` definition. That is behaviorally
       #   safe for a plain `let`, whose block never runs when the helper is
@@ -85,7 +107,7 @@ module RuboCop
         def on_new_investigation #: void
           super
           @stack = []
-          @builder = ScopeBuilder.new
+          @builder = ScopeBuilder.new(processed_source.file_path)
         end
 
         # RuboCop visits nested groups on their own `on_block`, so we never
@@ -129,7 +151,8 @@ module RuboCop
           ancestors = stack
           mark_upward(scope, ancestors)
           mark_downward(scope, ancestors)
-          mark_inclusion(scope, ancestors) if scope.inclusion
+          mark_referenced_all(scope, ancestors) if scope.inclusion
+          mark_referenced_all(scope, ancestors) if ignore_helper_spec?(scope, ancestors)
         end
 
         # A reference made in this group, whether in an example or a helper body,
@@ -155,12 +178,38 @@ module RuboCop
           end
         end
 
-        # A shared inclusion may reference any `let` visible where it sits, so
-        # treat every definition in scope at that point as referenced.
+        # A helper spec (rspec-rails `type: :helper`, or a `spec/helpers/...`
+        # file location) auto-includes the described module into the example
+        # group, so any of its externally defined methods may reference any
+        # `let` in scope — invisible to single-file analysis. Unless the user
+        # opts in via `CheckHelperSpecs`, treat every definition in scope as
+        # referenced. This judgement is independent of shared inclusions.
         #
         # @rbs scope: Scope
         # @rbs ancestors: Array[Scope]
-        def mark_inclusion(scope, ancestors) #: void
+        def ignore_helper_spec?(scope, ancestors) #: bool
+          return false if cop_config["CheckHelperSpecs"]
+
+          helper_spec?(scope, ancestors)
+        end
+
+        # The effective `type:` is the innermost one in the group's ancestry
+        # (each scope already carries its explicit type, or `:helper` inferred
+        # from a `spec/helpers` location).
+        #
+        # @rbs scope: Scope
+        # @rbs ancestors: Array[Scope]
+        def helper_spec?(scope, ancestors) #: bool
+          [scope, *ancestors].filter_map(&:type).first == :helper
+        end
+
+        # Treat every `let` visible in `scope` (its own and its ancestors') as
+        # referenced. Used where references can't be fully seen from this file:
+        # a shared inclusion, or a helper spec's auto-included module.
+        #
+        # @rbs scope: Scope
+        # @rbs ancestors: Array[Scope]
+        def mark_referenced_all(scope, ancestors) #: void
           [scope, *ancestors].each do |group|
             group.defined_names.each { group.mark_referenced(_1) }
           end

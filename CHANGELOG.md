@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+- `RSpec/UnusedLet` now skips helper specs (rspec-rails `type: :helper`, or
+  files under `spec/helpers`) by default, since the auto-included module may
+  reference any `let` unseen. Set `CheckHelperSpecs: true` to check them.
 - `RSpec/UnusedLet` now recognizes `let` definitions consumed by
   well-known gems' shared contexts and treats them as used. Currently
   supports [rspec-validator_spec_helper](https://github.com/izumin5210/rspec-validator_spec_helper):

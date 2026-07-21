@@ -16,6 +16,9 @@ module RuboCop
 
           DYNAMIC_DISPATCH_METHODS: untyped
 
+          # rspec-rails infers `type: :helper` for spec files under `spec/helpers`.
+          HELPER_SPEC_PATH: untyped
+
           # `let` names that well-known gems' shared contexts implicitly
           # reference, hidden from single-file analysis, keyed by the `type:`
           # metadata that pulls the shared context in. When a group carries a
@@ -31,6 +34,9 @@ module RuboCop
 
           def inclusion_call?: (RuboCop::AST::Node node) -> bool
 
+          # @rbs spec_filename: String?
+          def initialize: (String? spec_filename) -> void
+
           # Build the Scope for `node` from its own region alone; nested groups
           # are left for their own traversal.
           #
@@ -39,6 +45,8 @@ module RuboCop
 
           private
 
+          attr_reader spec_filename: String?
+
           # A well-known gem's shared context (pulled in by `type:` metadata)
           # can reference `let` names that single-file analysis never sees.
           # Record them exactly as a real helper on this group would be: an
@@ -46,9 +54,8 @@ module RuboCop
           # helper reference (reaching `let`s in descendant groups, since helper
           # bodies run in the example's scope).
           #
-          # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
-          def inject_implicit_references: (RuboCop::AST::Node node, Scope scope) -> void
+          def inject_implicit_references: (Scope scope) -> void
 
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
@@ -90,6 +97,13 @@ module RuboCop
 
           # @rbs node: RuboCop::AST::Node
           def type_from_group: (RuboCop::AST::Node node) -> Symbol?
+
+          # rspec-rails infers a spec's `type:` from its location when none is
+          # set explicitly. Only `:helper` is inferred here, the one type the
+          # cop acts on.
+          #
+          # @rbs filename: String?
+          def type_from_filename: (String? filename) -> Symbol?
         end
       end
     end

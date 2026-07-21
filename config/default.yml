@@ -4,7 +4,9 @@ RSpec/UnusedLet:
   Enabled: true
   SafeAutoCorrect: false
   CheckLetBang: true
+  CheckHelperSpecs: false
   Include:
     - "**/*_spec.rb"
     - "**/spec/**/*"
   VersionAdded: '1.0.0'
+  VersionChanged: '1.2.0'

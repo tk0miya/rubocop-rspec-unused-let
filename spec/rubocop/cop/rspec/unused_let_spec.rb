@@ -310,6 +310,107 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
       end
     end
 
+    context "with a helper spec" do
+      context "when CheckHelperSpecs is disabled (default)" do
+        context "with `type: :helper` metadata" do
+          it "ignores its lets, which the auto-included module may reference" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe MyHelper, type: :helper do
+                let(:current_user) { User.new }
+
+                it { expect(helper.greeting).to eq("Hi") }
+              end
+            RUBY
+          end
+        end
+
+        context "with `type: :helper` and a `let` in a nested context" do
+          it "ignores the nested and ancestor lets" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe MyHelper, type: :helper do
+                let(:current_user) { User.new }
+
+                context "when signed in" do
+                  let(:token) { "abc" }
+
+                  it { expect(helper.greeting).to eq("Hi") }
+                end
+              end
+            RUBY
+          end
+        end
+
+        context "with `type: :helper` on a nested group" do
+          it "ignores ancestor lets too" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe MyHelper do
+                let(:current_user) { User.new }
+
+                describe "#greeting", type: :helper do
+                  it { expect(helper.greeting).to eq("Hi") }
+                end
+              end
+            RUBY
+          end
+        end
+
+        context "with a `spec/helpers` file location and no `type:`" do
+          it "ignores its lets" do
+            expect_no_offenses(<<~RUBY, "spec/helpers/my_helper_spec.rb")
+              RSpec.describe MyHelper do
+                let(:current_user) { User.new }
+
+                it { expect(helper.greeting).to eq("Hi") }
+              end
+            RUBY
+          end
+        end
+
+        context "with a `spec/helpers` file but an explicit non-helper `type:`" do
+          it "still checks the group" do
+            expect_offense(<<~RUBY, "spec/helpers/my_helper_spec.rb")
+              RSpec.describe MyHelper, type: :model do
+                let(:unused) { 1 }
+                ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it { expect(true).to be(true) }
+              end
+            RUBY
+          end
+        end
+      end
+
+      context "when CheckHelperSpecs is enabled" do
+        let(:cop_config) { { "CheckLetBang" => true, "CheckHelperSpecs" => true } }
+
+        context "with `type: :helper` metadata" do
+          it "flags an unused let" do
+            expect_offense(<<~RUBY)
+              RSpec.describe MyHelper, type: :helper do
+                let(:unused) { 1 }
+                ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it { expect(helper.greeting).to eq("Hi") }
+              end
+            RUBY
+          end
+        end
+
+        context "with a `spec/helpers` file location" do
+          it "flags an unused let" do
+            expect_offense(<<~RUBY, "spec/helpers/my_helper_spec.rb")
+              RSpec.describe MyHelper do
+                let(:unused) { 1 }
+                ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it { expect(true).to be(true) }
+              end
+            RUBY
+          end
+        end
+      end
+    end
+
     context "when a shared example inclusion is in scope" do
       it "ignores lets in the including group" do
         expect_no_offenses(<<~RUBY)
