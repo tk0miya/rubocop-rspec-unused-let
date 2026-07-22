@@ -4,7 +4,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
   include_context "with UnusedLet AST helpers"
 
   describe "#build_from" do
-    subject { described_class.new.build_from(group_named(parse(source), "target")) }
+    subject { described_class.new(nil).build_from(group_named(parse(source), "target")) }
 
     describe "kind" do
       context "when the group is a describe block" do

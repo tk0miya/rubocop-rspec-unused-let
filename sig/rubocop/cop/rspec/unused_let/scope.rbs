@@ -23,11 +23,14 @@ module RuboCop
 
           attr_reader inclusion: bool
 
+          attr_reader type: Symbol?
+
           attr_reader resolved: Set[Symbol]
 
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
-          def initialize: (node: RuboCop::AST::Node, kind: kind) -> void
+          # @rbs type: Symbol?
+          def initialize: (node: RuboCop::AST::Node, kind: kind, ?type: Symbol?) -> void
 
           # @rbs helper: Symbol
           # @rbs name: Symbol

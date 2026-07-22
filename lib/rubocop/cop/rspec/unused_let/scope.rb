@@ -19,17 +19,20 @@ module RuboCop
           attr_reader :refs #: Set[Symbol] -- names referenced in this group's helper bodies
           attr_reader :refs_in_example #: Set[Symbol] -- names referenced outside this group's helper bodies
           attr_reader :inclusion #: bool -- whether this group pulls in a shared example group
+          attr_reader :type #: Symbol? -- this group's `type:`, explicit or inferred from the spec's location
           attr_reader :resolved #: Set[Symbol] -- names of this group's `let`s resolved to a reference
 
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
-          def initialize(node:, kind:) #: void
+          # @rbs type: Symbol?
+          def initialize(node:, kind:, type: nil) #: void
             @node = node
             @kind = kind
             @defs = []
             @refs = Set.new
             @refs_in_example = Set.new
             @inclusion = false
+            @type = type
             @resolved = Set.new
           end
 

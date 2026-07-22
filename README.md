@@ -114,6 +114,13 @@ RSpec/UnusedLet:
   # purely for its side effects (e.g. `let!(:user) { create(:user) }`), set this
   # to `false` to opt out.
   CheckLetBang: true
+
+  # Whether to check helper specs. Off by default. A helper spec (rspec-rails
+  # `type: :helper`, or a spec file under `spec/helpers`) auto-includes the
+  # described module into the example group, so its externally defined methods
+  # may reference any `let` in scope — invisibly to single-file analysis. Set
+  # this to `true` to check them anyway, accepting the risk of false positives.
+  CheckHelperSpecs: false
 ```
 
 ## Known-gem support
@@ -135,6 +142,22 @@ Currently supported:
 RSpec.describe JsonFormatValidator, type: :validator do
   let(:value) { "String" }   # not flagged
   it { is_expected.to be_invalid }
+end
+```
+
+## Helper specs
+
+Helper specs (rspec-rails `type: :helper` groups, or spec files under
+`spec/helpers`) auto-include the described module into the example group.
+Its methods live in another file and may reference any `let` in scope, so a
+single-file static analysis cannot see those references. To avoid false
+positives, such groups are skipped by default. Set `CheckHelperSpecs: true`
+to check them anyway.
+
+```ruby
+RSpec.describe MyHelper, type: :helper do
+  let(:current_user) { User.new }   # not flagged (may be used by MyHelper's methods)
+  it { expect(helper.greeting).to eq("Hi") }
 end
 ```
 

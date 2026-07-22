@@ -8,6 +8,8 @@ module RuboCop
       class Base
         def cop_config: () -> Hash[String, untyped]
 
+        def processed_source: () -> RuboCop::AST::ProcessedSource
+
         def add_offense: (untyped node, ?message: String) -> void
                        | (untyped node, ?message: String) { (RuboCop::Cop::Corrector) -> void } -> void
 
@@ -17,6 +19,13 @@ module RuboCop
 
         def self.def_node_search: (Symbol, String) -> void
       end
+    end
+  end
+
+  module AST
+    # The collection's RBS omits `file_path`; declare only what this gem uses.
+    class ProcessedSource
+      def file_path: () -> String?
     end
   end
 

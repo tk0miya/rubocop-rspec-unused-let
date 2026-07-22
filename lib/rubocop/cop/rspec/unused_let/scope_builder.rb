@@ -17,6 +17,9 @@ module RuboCop
             send public_send __send__ method respond_to?
           ].freeze
 
+          # rspec-rails infers `type: :helper` for spec files under `spec/helpers`.
+          HELPER_SPEC_PATH = %r{(?:^|/)spec/helpers/}.freeze
+
           # `let` names that well-known gems' shared contexts implicitly
           # reference, hidden from single-file analysis, keyed by the `type:`
           # metadata that pulls the shared context in. When a group carries a
@@ -60,22 +63,30 @@ module RuboCop
 
           def_node_matcher :inclusion_call?, "(send nil? #Includes.all ...)"
 
+          # @rbs spec_filename: String?
+          def initialize(spec_filename) #: void
+            @spec_filename = spec_filename
+          end
+
           # Build the Scope for `node` from its own region alone; nested groups
           # are left for their own traversal.
           #
           # @rbs node: RuboCop::AST::Node
           def build_from(node) #: Scope
             kind = example_group?(node) ? :example : :shared #: Scope::kind
-            scope = Scope.new(node: node, kind: kind)
+            type = type_from_group(node) || type_from_filename(spec_filename)
+            scope = Scope.new(node: node, kind: kind, type: type)
             helpers = helper_nodes(node)
             collect_definitions(node, scope)
             helpers.each { record_helper_references(_1, scope) }
             collect_example_references(node, scope, helpers)
-            inject_implicit_references(node, scope)
+            inject_implicit_references(scope)
             scope
           end
 
           private
+
+          attr_reader :spec_filename #: String?
 
           # A well-known gem's shared context (pulled in by `type:` metadata)
           # can reference `let` names that single-file analysis never sees.
@@ -84,11 +95,9 @@ module RuboCop
           # helper reference (reaching `let`s in descendant groups, since helper
           # bodies run in the example's scope).
           #
-          # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
-          def inject_implicit_references(node, scope) #: void
-            type = type_from_group(node)
-            names = type && IMPLICIT_REFS_BY_TYPE[type]
+          def inject_implicit_references(scope) #: void
+            names = scope.type && IMPLICIT_REFS_BY_TYPE[scope.type]
             return unless names
 
             names.each do |name|
@@ -189,6 +198,15 @@ module RuboCop
               end
             end
             nil
+          end
+
+          # rspec-rails infers a spec's `type:` from its location when none is
+          # set explicitly. Only `:helper` is inferred here, the one type the
+          # cop acts on.
+          #
+          # @rbs filename: String?
+          def type_from_filename(filename) #: Symbol?
+            :helper if filename && HELPER_SPEC_PATH.match?(filename)
           end
         end
       end
