@@ -69,7 +69,8 @@ reach and conservative when it is not:
 - When the included block is **not defined in this file** (or is included under
   a non-literal name), the cop cannot tell what it references, so it leaves every
   `let` **visible at that inclusion point** alone. Sibling subtrees without such
-  an inclusion are still checked.
+  an inclusion are still checked. To resolve blocks defined in other files (e.g.
+  under `spec/support`), list them in `SharedExamplePaths` (see below).
 
 ```ruby
 RSpec.shared_examples "uses a" do
@@ -102,6 +103,26 @@ RSpec.describe Foo do
   end
 end
 ```
+
+### Resolving shared examples defined in other files
+
+Shared examples usually live under `spec/support` and are included from many
+spec files. List those files in `SharedExamplePaths` (paths or globs) and the
+cop pre-loads them, so an inclusion of a block defined there is resolved with
+the same precision as an in-file one, instead of the conservative fallback
+above.
+
+```yaml
+# .rubocop.yml
+RSpec/UnusedLet:
+  SharedExamplePaths:
+    - "spec/support/**/*.rb"
+```
+
+Paths resolve relative to the `.rubocop.yml` that sets them (as `Include` and
+`Exclude` do). A listed file that is missing or cannot be parsed is skipped, and
+when a name is defined both in a pre-loaded file and in the spec itself, the
+in-file definition wins (mirroring RSpec's load order).
 
 ## Autocorrect
 
