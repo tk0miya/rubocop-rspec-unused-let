@@ -10,11 +10,9 @@ module RuboCop
         # needs RSpec's node-pattern matchers, so it is kept out of both the cop
         # (RuboCop lifecycle) and {Scope} (pure data and queries).
         class ScopeBuilder
-          include ::RuboCop::RSpec::Language
+          include Matchers
 
-          extend ::RuboCop::AST::NodePattern::Macros
-
-          DYNAMIC_DISPATCH_METHODS: untyped
+          include References
 
           # rspec-rails infers `type: :helper` for spec files under `spec/helpers`.
           HELPER_SPEC_PATH: untyped
@@ -26,16 +24,9 @@ module RuboCop
           # that `let`s of those names (here or in a descendant) count as used.
           IMPLICIT_REFS_BY_TYPE: untyped
 
-          def example_group?: (RuboCop::AST::Node node) -> bool
-
-          def spec_group?: (RuboCop::AST::Node node) -> bool
-
-          def let_definition: (RuboCop::AST::Node node) -> [ Symbol, Symbol | String ]?
-
-          def inclusion_call?: (RuboCop::AST::Node node) -> bool
-
           # @rbs spec_filename: String?
-          def initialize: (String? spec_filename) -> void
+          # @rbs registry: SharedExampleRegistry
+          def initialize: (String? spec_filename, SharedExampleRegistry registry) -> void
 
           # Build the Scope for `node` from its own region alone; nested groups
           # are left for their own traversal.
@@ -46,6 +37,8 @@ module RuboCop
           private
 
           attr_reader spec_filename: String?
+
+          attr_reader registry: SharedExampleRegistry
 
           # A well-known gem's shared context (pulled in by `type:` metadata)
           # can reference `let` names that single-file analysis never sees.
@@ -64,13 +57,22 @@ module RuboCop
           # References in `node`'s region that sit *outside* its helper bodies
           # (examples and any other group-level code), collected into
           # `refs_in_example`. Stops at nested spec groups and skips the helper
-          # definitions, whose references belong to `refs`. Records a shared
+          # definitions, whose references belong to `refs`. Resolves a shared
           # inclusion found along the way.
           #
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           # @rbs helpers: Array[RuboCop::AST::Node]
           def collect_example_references: (RuboCop::AST::Node node, Scope scope, Array[RuboCop::AST::Node] helpers) -> void
+
+          # A shared inclusion whose block is defined in this file consumes only
+          # its free references, recorded like any other example reference. An
+          # inclusion we cannot resolve (an unknown or dynamically named block)
+          # falls back to silencing every `let` visible at this point.
+          #
+          # @rbs node: RuboCop::AST::Node
+          # @rbs scope: Scope
+          def record_inclusion: (RuboCop::AST::Node node, Scope scope) -> void
 
           # The group's own `let`/`subject`/hook/`def` definitions, whose bodies
           # run in the example's scope.
@@ -81,12 +83,6 @@ module RuboCop
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           def record_helper_references: (RuboCop::AST::Node node, Scope scope) -> void
-
-          # `let`-visible names a single send node references: a bare (nil
-          # receiver) call, plus any dynamic-dispatch target such as `send(:foo)`.
-          #
-          # @rbs node: RuboCop::AST::Node
-          def references_in: (RuboCop::AST::Node node) -> Array[Symbol]
 
           # `def foo` written at an example group's level becomes an instance
           # method on the group's example class. Skip `def`s nested inside a

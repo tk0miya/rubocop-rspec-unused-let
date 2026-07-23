@@ -14,7 +14,8 @@ module UnusedLetAstHelper
   # The example group block node introduced with the given description
   # string, e.g. `group_named(root, "target")` finds `context "target" do`.
   def group_named(root, description)
-    found = [root, *root.each_descendant(:block)].find do |node|
+    candidates = [root, *root.each_descendant(:block)].select(&:block_type?)
+    found = candidates.find do |node|
       first_argument = node.send_node.first_argument
       first_argument&.str_type? && first_argument.value == description
     end

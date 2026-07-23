@@ -1,0 +1,22 @@
+# Generated from lib/rubocop/cop/rspec/unused_let/references.rb with RBS::Inline
+
+module RuboCop
+  module Cop
+    module RSpec
+      class UnusedLet < ::RuboCop::Cop::RSpec::Base
+        # The `let`-visible names a single send node references. Shared by
+        # {ScopeBuilder} and {SharedExampleRegistry} so both read references the
+        # same way.
+        module References
+          DYNAMIC_DISPATCH_METHODS: untyped
+
+          # A bare (nil receiver) call names a `let`; a dynamic-dispatch call
+          # such as `send(:foo)` names its literal first argument.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def self?.references_in: (RuboCop::AST::Node node) -> Array[Symbol]
+        end
+      end
+    end
+  end
+end

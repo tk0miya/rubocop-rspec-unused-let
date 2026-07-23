@@ -1,0 +1,132 @@
+# Generated from lib/rubocop/cop/rspec/unused_let/shared_example_registry.rb with RBS::Inline
+
+module RuboCop
+  module Cop
+    module RSpec
+      class UnusedLet < ::RuboCop::Cop::RSpec::Base
+        # A file-wide index of the `shared_examples`/`shared_context` blocks
+        # defined in the source under investigation.
+        #
+        # RuboCop analyzes one file at a time, so a shared block defined in
+        # *another* file is invisible and any inclusion of it must stay
+        # conservative. But when the definition lives in the same file we can
+        # read exactly which `let`-visible names it consumes — its *free
+        # references*: the names referenced anywhere in its subtree that it does
+        # not itself define. An inclusion then only needs to justify those
+        # names, instead of silencing every `let` in scope.
+        #
+        # Lookup follows RSpec's own scoping. A `shared_examples` inside a group
+        # is visible only to that group and its descendants, and an inner
+        # definition shadows an outer one of the same name. {#resolve} therefore
+        # takes the inclusion node and walks its enclosing groups from the
+        # innermost outward (then the file's top level), returning the *nearest*
+        # matching definition — mirroring how RSpec picks which shared block a
+        # name refers to.
+        #
+        # {#resolve} returns the free references for the resolved name, or `nil`
+        # when no definition is visible or it cannot be resolved (a dynamic or
+        # unknown nested inclusion, or an inclusion cycle) — in which case the
+        # caller falls back to treating every visible `let` as referenced.
+        class SharedExampleRegistry
+          include Matchers
+
+          include References
+
+          # One shared block's region data, gathered across its whole subtree.
+          class Definition < Struct[RuboCop::AST::Node? | RuboCop::AST::Node | Set[Symbol] | Array[[ String?, RuboCop::AST::Node ]]]
+            attr_accessor owner(): RuboCop::AST::Node?
+
+            attr_accessor node(): RuboCop::AST::Node
+
+            attr_accessor refs(): Set[Symbol]
+
+            attr_accessor defs(): Set[Symbol]
+
+            attr_accessor inclusions(): Array[[ String?, RuboCop::AST::Node ]]
+
+            def self.new: (?RuboCop::AST::Node? owner, ?RuboCop::AST::Node node, ?Set[Symbol] refs, ?Set[Symbol] defs, ?Array[[ String?, RuboCop::AST::Node ]] inclusions) -> instance
+                        | (?owner: RuboCop::AST::Node?, ?node: RuboCop::AST::Node, ?refs: Set[Symbol], ?defs: Set[Symbol], ?inclusions: Array[[ String?, RuboCop::AST::Node ]]) -> instance
+          end
+
+          # @rbs ast: RuboCop::AST::Node?
+          def initialize: (RuboCop::AST::Node? ast) -> void
+
+          # The free references an inclusion of `name` at `inclusion_node`
+          # consumes, or `nil` when no definition is visible or it cannot be
+          # resolved.
+          #
+          # @rbs name: Symbol | String
+          # @rbs inclusion_node: RuboCop::AST::Node
+          def resolve: (Symbol | String name, RuboCop::AST::Node inclusion_node) -> Set[Symbol]?
+
+          private
+
+          attr_reader definitions: Hash[String, Array[Definition]]
+
+          # Index every shared block in the file under its name. Names can carry
+          # more than one definition (in different scopes, or a same-scope
+          # redefinition), disambiguated at lookup time by scope.
+          #
+          # @rbs ast: RuboCop::AST::Node
+          def scan: (RuboCop::AST::Node ast) -> void
+
+          # @rbs node: RuboCop::AST::Node
+          def build_definition: (RuboCop::AST::Node node) -> Definition
+
+          # Sort one subtree node into the shared block's definitions,
+          # references or nested inclusions.
+          #
+          # @rbs child: RuboCop::AST::Node
+          # @rbs definition: Definition
+          def classify: (RuboCop::AST::Node child, Definition definition) -> void
+
+          # A bare send inside a shared block is either an inclusion of another
+          # shared block (recorded for nested resolution) or a plain reference.
+          #
+          # @rbs child: RuboCop::AST::Node
+          # @rbs definition: Definition
+          def classify_send: (RuboCop::AST::Node child, Definition definition) -> void
+
+          # The nearest example/shared group enclosing `node`, or `nil` when it
+          # sits at the file's top level.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def enclosing_group: (RuboCop::AST::Node node) -> RuboCop::AST::Node?
+
+          # @rbs name: String
+          # @rbs inclusion_node: RuboCop::AST::Node
+          # @rbs stack: Array[RuboCop::AST::Node]
+          def resolve_from: (String name, RuboCop::AST::Node inclusion_node, Array[RuboCop::AST::Node] stack) -> Set[Symbol]?
+
+          # The definition of `name` that RSpec would apply at `inclusion_node`:
+          # the innermost enclosing group that defines the name wins (shadowing
+          # outer ones), falling back to the file's top-level definitions. Within
+          # the winning scope the last definition wins, mirroring RSpec, which
+          # warns on a redefinition and keeps the latest. `nil` when no
+          # definition is visible here.
+          #
+          # @rbs name: String
+          # @rbs inclusion_node: RuboCop::AST::Node
+          def lookup: (String name, RuboCop::AST::Node inclusion_node) -> Definition?
+
+          # The free references the definition consumes: the names it references
+          # but does not define, plus the free references of the blocks it
+          # includes (reduced by its own definitions). `nil` if it is part of a
+          # cycle, or includes something dynamic or itself unresolvable.
+          #
+          # @rbs definition: Definition
+          # @rbs stack: Array[RuboCop::AST::Node]
+          def free_references: (Definition definition, Array[RuboCop::AST::Node] stack) -> Set[Symbol]?
+
+          # The free references reaching `definition` through the shared blocks
+          # it includes, reduced by the names it defines itself. `nil` if any
+          # nested inclusion is dynamic or unresolvable.
+          #
+          # @rbs definition: Definition
+          # @rbs stack: Array[RuboCop::AST::Node]
+          def nested_references: (Definition definition, Array[RuboCop::AST::Node] stack) -> Set[Symbol]?
+        end
+      end
+    end
+  end
+end

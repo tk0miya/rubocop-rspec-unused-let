@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "unused_let/matchers"
+require_relative "unused_let/references"
 require_relative "unused_let/scope"
 require_relative "unused_let/scope_builder"
+require_relative "unused_let/shared_example_registry"
 
 module RuboCop
   module Cop
@@ -21,10 +24,14 @@ module RuboCop
       # * `let` definitions inside a `shared_examples`/`shared_context` block are
       #   ignored, because their consumers live in the (possibly external)
       #   including example groups.
-      # * When an example group's subtree contains a shared example inclusion
-      #   (`it_behaves_like`, `include_examples`, `include_context`, ...), the
-      #   `let` definitions visible at that inclusion point are ignored, because
-      #   the (possibly external) shared block may reference them.
+      # * When an example group includes a shared example whose block is defined
+      #   in the same file (`it_behaves_like`, `include_examples`,
+      #   `include_context`, ...), only the `let`s that block actually references
+      #   are treated as used; the rest stay checked.
+      # * When the included block is not defined in this file (or is included
+      #   under a dynamically computed name), every `let` visible at that
+      #   inclusion point is ignored, because the shared block may reference any
+      #   of them.
       # * `let` definitions whose name is implicitly consumed by a well-known
       #   gem's shared context (identified by the `type:` metadata on an
       #   example group or one of its ancestors) are ignored. Currently this
@@ -107,7 +114,10 @@ module RuboCop
         def on_new_investigation #: void
           super
           @stack = []
-          @builder = ScopeBuilder.new(processed_source.file_path)
+          @builder = ScopeBuilder.new(
+            processed_source.file_path,
+            SharedExampleRegistry.new(processed_source.ast)
+          )
         end
 
         # RuboCop visits nested groups on their own `on_block`, so we never
@@ -128,6 +138,11 @@ module RuboCop
         # A group's `let`s know whether they were referenced once its whole
         # subtree has been entered, which is complete by the time it is left.
         #
+        # A group nested inside a `shared_examples`/`shared_context` block is
+        # never reported: its `let`s may be consumed by the (possibly external)
+        # groups that include the shared block, exactly like `let`s written
+        # directly in the shared block.
+        #
         # @rbs node: RuboCop::AST::Node
         def after_block(node) #: void
           return unless builder.spec_group?(node)
@@ -135,7 +150,7 @@ module RuboCop
           scope = stack.pop
           return unless scope
 
-          report(scope)
+          report(scope) unless stack.any?(&:shared?)
         end
 
         private

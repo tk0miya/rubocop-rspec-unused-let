@@ -411,37 +411,241 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
       end
     end
 
-    context "when a shared example inclusion is in scope" do
-      it "ignores lets in the including group" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:name) { "value" }
+    context "when the spec has a shared example inclusion" do
+      context "when the inclusion resolves within the file" do
+        context "when the shared block references some of the includer's lets" do
+          it "keeps those and flags the rest" do
+            expect_offense(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                it { expect(name).to eq("value") }
+              end
 
-            it_behaves_like "a thing"
+              RSpec.describe Foo do
+                let(:name) { "value" }
+                let(:unused) { 1 }
+                ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it_behaves_like "a thing"
+              end
+            RUBY
           end
-        RUBY
+        end
+
+        context "when the shared example is defined after the inclusion" do
+          it "still resolves it" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe Foo do
+                let(:name) { "value" }
+
+                it_behaves_like "a thing"
+              end
+
+              RSpec.shared_examples "a thing" do
+                it { expect(name).to eq("value") }
+              end
+            RUBY
+          end
+        end
+
+        context "when a reference is reachable through a nested inclusion" do
+          it "keeps the let that satisfies it" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_examples "outer" do
+                include_examples "inner"
+              end
+
+              RSpec.shared_examples "inner" do
+                it { expect(name).to eq("value") }
+              end
+
+              RSpec.describe Foo do
+                let(:name) { "value" }
+
+                it_behaves_like "outer"
+              end
+            RUBY
+          end
+        end
+
+        context "when the reference sits in a nested group inside the shared block" do
+          it "keeps the includer's let it resolves" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                context "nested" do
+                  it { expect(value).to eq(1) }
+                end
+              end
+
+              RSpec.describe Foo do
+                let(:value) { 1 }
+
+                it_behaves_like "a thing"
+              end
+            RUBY
+          end
+        end
+
+        context "when the shared block defines the referenced name itself" do
+          it "flags the includer's like-named let" do
+            expect_offense(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                let(:helper) { 1 }
+
+                it { expect(helper).to eq(1) }
+              end
+
+              RSpec.describe Foo do
+                let(:helper) { 2 }
+                ^^^^^^^^^^^^ `let(:helper)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it_behaves_like "a thing"
+              end
+            RUBY
+          end
+        end
+
+        context "when the shared example is named with a symbol" do
+          it "resolves it" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_examples :a_thing do
+                it { expect(name).to eq("value") }
+              end
+
+              RSpec.describe Foo do
+                let(:name) { "value" }
+
+                it_behaves_like :a_thing
+              end
+            RUBY
+          end
+        end
+
+        context "when the same name is defined in an enclosing group" do
+          it "resolves the inclusion to the nearest (shadowing) definition" do
+            expect_offense(<<~RUBY)
+              RSpec.shared_examples "common" do
+                it { expect(outer).to eq(1) }
+              end
+
+              RSpec.describe Foo do
+                context "inner" do
+                  shared_examples "common" do
+                    it { expect(inner).to eq(1) }
+                  end
+
+                  let(:inner) { 1 }
+                  let(:outer) { 2 }
+                  ^^^^^^^^^^^ `let(:outer)` is not referenced anywhere. Remove it or reference it in an example.
+
+                  it_behaves_like "common"
+                end
+              end
+            RUBY
+          end
+        end
       end
 
-      it "ignores lets defined in the shared_examples block" do
+      context "when the inclusion cannot be resolved" do
+        context "when the shared example is not defined in the file" do
+          it "ignores every let visible at the inclusion" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe Foo do
+                let(:name) { "value" }
+
+                it_behaves_like "a thing"
+              end
+            RUBY
+          end
+        end
+
+        context "when the shared example is included under a dynamic name" do
+          it "stays conservative and ignores visible lets" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                it { expect(true).to be(true) }
+              end
+
+              RSpec.describe Foo do
+                let(:name) { "value" }
+
+                it_behaves_like SHARED
+              end
+            RUBY
+          end
+        end
+
+        context "when the group also includes an unresolvable shared example" do
+          it "stays conservative for the whole group, keeping every visible let" do
+            # `never_used` would be flagged if `known` were the only inclusion,
+            # but the unresolvable `external` forces the whole group conservative.
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_examples "known" do
+                it { expect(used).to eq(1) }
+              end
+
+              RSpec.describe Foo do
+                let(:used) { 1 }
+                let(:never_used) { 2 }
+
+                it_behaves_like "known"
+                it_behaves_like "external"
+              end
+            RUBY
+          end
+        end
+
+        context "when the definition lives in a sibling group" do
+          it "cannot see it and stays conservative" do
+            # Bar's inclusion cannot see Foo's group-local shared block.
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe Foo do
+                shared_examples "common" do
+                  it { expect(a).to eq(1) }
+                end
+
+                let(:a) { 1 }
+
+                it_behaves_like "common"
+              end
+
+              RSpec.describe Bar do
+                let(:b) { 2 }
+
+                it_behaves_like "common"
+              end
+            RUBY
+          end
+        end
+
+        context "when only one subtree carries the inclusion" do
+          it "still checks the sibling subtrees" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                context "with shared" do
+                  it_behaves_like "a thing"
+                end
+
+                context "other" do
+                  let(:unused) { 1 }
+                  ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+                  it { expect(true).to be(true) }
+                end
+              end
+            RUBY
+          end
+        end
+      end
+    end
+
+    context "with lets defined inside a shared example block" do
+      it "does not flag them, at any nesting depth" do
         expect_no_offenses(<<~RUBY)
           RSpec.shared_examples "a thing" do
-            let(:helper) { 1 }
-          end
-        RUBY
-      end
+            let(:direct) { 1 }
 
-      it "still flags lets in a sibling subtree without an inclusion" do
-        expect_offense(<<~RUBY)
-          RSpec.describe Foo do
-            context "with shared" do
-              it_behaves_like "a thing"
-            end
-
-            context "other" do
-              let(:unused) { 1 }
-              ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
-
-              it { expect(true).to be(true) }
+            context "nested" do
+              let(:nested) { 2 }
             end
           end
         RUBY

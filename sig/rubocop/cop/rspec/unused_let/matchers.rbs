@@ -1,0 +1,32 @@
+# Generated from lib/rubocop/cop/rspec/unused_let/matchers.rb with RBS::Inline
+
+module RuboCop
+  module Cop
+    module RSpec
+      class UnusedLet < ::RuboCop::Cop::RSpec::Base
+        # The RSpec node-pattern matchers this cop uses to recognize AST nodes:
+        # example/shared groups, `let`/`subject` definitions, and shared-example
+        # inclusions.
+        module Matchers
+          include ::RuboCop::RSpec::Language
+
+          extend ::RuboCop::AST::NodePattern::Macros
+
+          def example_group?: (RuboCop::AST::Node node) -> bool
+
+          def spec_group?: (RuboCop::AST::Node node) -> bool
+
+          def shared_group_name: (RuboCop::AST::Node node) -> (Symbol | String)?
+
+          def let_definition: (RuboCop::AST::Node node) -> [ Symbol, Symbol | String ]?
+
+          def subject_definition_name: (RuboCop::AST::Node node) -> Symbol?
+
+          def inclusion_call?: (RuboCop::AST::Node node) -> bool
+
+          def inclusion_name: (RuboCop::AST::Node node) -> (Symbol | String)?
+        end
+      end
+    end
+  end
+end

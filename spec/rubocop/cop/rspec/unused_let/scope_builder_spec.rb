@@ -4,7 +4,12 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
   include_context "with UnusedLet AST helpers"
 
   describe "#build_from" do
-    subject { described_class.new(nil).build_from(group_named(parse(source), "target")) }
+    subject { described_class.new(nil, registry).build_from(group_named(root, "target")) }
+
+    # Build the registry from the same parse the group comes from, so node
+    # identity lines up when an inclusion is resolved.
+    let(:root) { parse(source) }
+    let(:registry) { RuboCop::Cop::RSpec::UnusedLet::SharedExampleRegistry.new(root) }
 
     describe "kind" do
       context "when the group is a describe block" do
@@ -210,6 +215,35 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
         it "leaves the inclusion to the nested group's own scope" do
           expect(subject.inclusion).to be(false)
         end
+      end
+    end
+
+    context "when the included block is defined in the same file" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          it_behaves_like "a thing"
+        end
+
+        shared_examples "a thing" do
+          it { expect(value).to eq(1) }
+        end
+      RUBY
+
+      it "records the block's free references and stays out of the conservative fallback" do
+        expect(subject.refs_in_example).to include(:value)
+        expect(subject.inclusion).to be(false)
+      end
+    end
+
+    context "when the included block is not defined in the file" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it "falls back to the conservative inclusion flag" do
+        expect(subject.inclusion).to be(true)
       end
     end
 

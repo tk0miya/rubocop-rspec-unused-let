@@ -5,7 +5,8 @@ unreferenced RSpec `let` definitions.
 
 It adds a single cop, `RSpec/UnusedLet`, which flags `let` (and optionally
 `let!`) definitions whose name is never referenced within their scope. The cop
-is deliberately conservative around `shared_examples` so that it avoids false
+resolves `shared_examples` references precisely when the shared block is defined
+in the same file, and stays conservative otherwise, so that it avoids false
 positives that a naive implementation would produce.
 
 ## Installation
@@ -56,15 +57,35 @@ such as `send(:name)` / `public_send("name")` are also treated as usages.
 ## How it handles `shared_examples`
 
 Because RuboCop analyzes one file at a time, a `let` can be consumed by a shared
-example block defined in another file. To avoid false positives, the cop stays
-silent whenever it cannot see every possible reference:
+example block defined in another file. The cop is precise when the block is in
+reach and conservative when it is not:
 
-- `let` definitions **inside** a `shared_examples` / `shared_context` block are
-  ignored (their consumers are the including groups, which may be external).
-- When an example group's subtree contains a shared example inclusion
-  (`it_behaves_like`, `include_examples`, `include_context`, ...), the `let`
-  definitions **visible at that inclusion point** are ignored. Sibling subtrees
-  that do not include shared examples are still checked.
+- `let` definitions **inside** a `shared_examples` / `shared_context` block —
+  including any nested `context`/`describe` within it — are never flagged, since
+  the groups that include the block (possibly in other files) may reference them.
+- When an included shared example is **defined in the same file**, only the
+  `let`s that block actually references are treated as used; every other `let`
+  stays checked.
+- When the included block is **not defined in this file** (or is included under
+  a non-literal name), the cop cannot tell what it references, so it leaves every
+  `let` **visible at that inclusion point** alone. Sibling subtrees without such
+  an inclusion are still checked.
+
+```ruby
+RSpec.shared_examples "uses a" do
+  it { expect(a).to eq(1) }  # references `a`, and only `a`
+end
+
+RSpec.describe Foo do
+  let(:a) { 1 }              # skipped: referenced by the shared block above
+  let(:b) { 2 }              # flagged: the shared block never references it
+
+  it_behaves_like "uses a"
+end
+```
+
+For an inclusion the cop cannot resolve, it falls back to silencing every
+visible `let`:
 
 ```ruby
 RSpec.describe Foo do
@@ -72,7 +93,7 @@ RSpec.describe Foo do
 
   context "with shared" do
     let(:b) { 2 }            # skipped: same
-    it_behaves_like "something"
+    it_behaves_like "an external thing"   # defined in another file
   end
 
   context "other" do
