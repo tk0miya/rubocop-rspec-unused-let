@@ -25,6 +25,17 @@ module RuboCop
           def inclusion_call?: (RuboCop::AST::Node node) -> bool
 
           def inclusion_name: (RuboCop::AST::Node node) -> (Symbol | String)?
+
+          def nested_inclusion?: (RuboCop::AST::Node node) -> bool
+
+          # An *inline* inclusion (`include_examples`/`include_context`) injects
+          # the shared block's definitions into the current context, where a
+          # nested one isolates them in its own group. Any inclusion not
+          # recognized as nested counts as inline, so an unknown form errs toward
+          # suppressing a same-named `let` rather than risking a false positive.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def inline_inclusion?: (RuboCop::AST::Node node) -> bool
         end
       end
     end
