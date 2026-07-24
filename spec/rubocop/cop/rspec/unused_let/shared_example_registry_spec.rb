@@ -393,4 +393,67 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::SharedExampleRegistry do
       end
     end
   end
+
+  describe "#self_consumed_definitions" do
+    subject { registry.self_consumed_definitions(name, inclusion_nodes(root).fetch(index)) }
+
+    let(:root) { parse(source) }
+    let(:registry) { described_class.new(root) }
+    let(:name) { "a thing" }
+    let(:index) { 0 }
+
+    context "when the block both defines and references a name" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          let(:helper) { 1 }
+
+          it { expect(helper).to eq(1) }
+        end
+
+        RSpec.describe Foo do
+          include_examples "a thing"
+        end
+      RUBY
+
+      it { is_expected.to contain_exactly(:helper) }
+    end
+
+    context "when the block defines a name but never references it" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          let(:helper) { 1 }
+        end
+
+        RSpec.describe Foo do
+          include_examples "a thing"
+        end
+      RUBY
+
+      it { is_expected.to be_empty }
+    end
+
+    context "when the block references a free name it does not define" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          it { expect(value).to eq(1) }
+        end
+
+        RSpec.describe Foo do
+          include_examples "a thing"
+        end
+      RUBY
+
+      it { is_expected.not_to include(:value) }
+    end
+
+    context "when no definition is visible" do
+      let(:source) { <<~RUBY }
+        RSpec.describe Foo do
+          include_examples "a thing"
+        end
+      RUBY
+
+      it { is_expected.to be_nil }
+    end
+  end
 end

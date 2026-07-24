@@ -25,6 +25,8 @@ module RuboCop
           def inclusion_call?: (RuboCop::AST::Node node) -> bool
 
           def inclusion_name: (RuboCop::AST::Node node) -> (Symbol | String)?
+
+          def nested_inclusion?: (RuboCop::AST::Node node) -> bool
         end
       end
     end

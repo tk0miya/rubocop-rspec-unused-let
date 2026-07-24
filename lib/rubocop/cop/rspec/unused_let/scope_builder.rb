@@ -115,16 +115,41 @@ module RuboCop
           # inclusion we cannot resolve (an unknown or dynamically named block)
           # falls back to silencing every `let` visible at this point.
           #
+          # An *inline* inclusion (`include_examples`/`include_context`) also
+          # injects the shared block's own definitions into this scope, unlike
+          # `it_behaves_like`, which nests them in their own group. So a name the
+          # block both defines and consumes turns a same-named `let` written in
+          # this scope into the live, referenced definition, which must not be
+          # flagged.
+          #
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           def record_inclusion(node, scope) #: void
             name = inclusion_name(node)
             free_refs = name && registry.resolve(name, node)
-            if free_refs
-              free_refs.each { scope.add_reference_in_example(_1) }
-            else
+            unless name && free_refs
               scope.mark_inclusion
+              return
             end
+
+            free_refs.each { scope.add_reference_in_example(_1) }
+            mark_inline_collisions(name, node, scope) unless nested_inclusion?(node)
+          end
+
+          # Mark this scope's `let`s that collide with a definition the inline
+          # block both defines and consumes: inline injection makes the local
+          # definition the one actually referenced. Scoped to this group's own
+          # definitions, so it never suppresses an unrelated `let` in an ancestor
+          # or descendant group.
+          #
+          # @rbs name: Symbol | String
+          # @rbs node: RuboCop::AST::Node
+          # @rbs scope: Scope
+          def mark_inline_collisions(name, node, scope) #: void
+            consumed = registry.self_consumed_definitions(name, node)
+            return unless consumed
+
+            consumed.each { scope.mark_referenced(_1) }
           end
 
           # The group's own `let`/`subject`/hook/`def` definitions, whose bodies
