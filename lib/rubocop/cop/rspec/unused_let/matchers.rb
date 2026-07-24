@@ -19,6 +19,7 @@ module RuboCop
           #   def subject_definition_name: (RuboCop::AST::Node node) -> Symbol?
           #   def inclusion_call?: (RuboCop::AST::Node node) -> bool
           #   def inclusion_name: (RuboCop::AST::Node node) -> (Symbol | String)?
+          #   def nested_inclusion?: (RuboCop::AST::Node node) -> bool
 
           def_node_matcher :example_group?, <<~PATTERN
             (block (send #rspec? #ExampleGroups.all ...) ...)
@@ -47,6 +48,14 @@ module RuboCop
 
           def_node_matcher :inclusion_name, <<~PATTERN
             (send nil? #Includes.all ({sym str} $_) ...)
+          PATTERN
+
+          # `it_behaves_like`/`it_should_behave_like` wrap the shared block in a
+          # *nested* example group, so its definitions stay isolated. Every other
+          # inclusion (`include_examples`/`include_context`) is *inline*: it
+          # injects the shared block's definitions into the current context.
+          def_node_matcher :nested_inclusion?, <<~PATTERN
+            (send nil? {:it_behaves_like :it_should_behave_like} ...)
           PATTERN
         end
       end

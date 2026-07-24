@@ -49,6 +49,23 @@ module RuboCop
           # @rbs inclusion_node: RuboCop::AST::Node
           def resolve: (Symbol | String name, RuboCop::AST::Node inclusion_node) -> Set[Symbol]?
 
+          # The names the shared block of `name` (as resolved at `inclusion_node`)
+          # both *defines and references itself*. These matter only for an inline
+          # inclusion (`include_examples`/`include_context`), which injects the
+          # block's definitions into the including context: a `let` of the same
+          # name written there becomes the live, referenced definition and so
+          # must not be flagged. A name the block merely defines but never uses is
+          # excluded, so a genuinely unused same-named `let` is still checked.
+          #
+          # Only the block's own directly-defined names are considered; names
+          # leaked transitively through a further inline inclusion nested inside
+          # the block are not tracked (a rare, deeply nested case), where the cop
+          # stays as it was. `nil` when no definition is visible.
+          #
+          # @rbs name: Symbol | String
+          # @rbs inclusion_node: RuboCop::AST::Node
+          def self_consumed_definitions: (Symbol | String name, RuboCop::AST::Node inclusion_node) -> Set[Symbol]?
+
           private
 
           attr_reader external_definitions: Array[definition_mapping]

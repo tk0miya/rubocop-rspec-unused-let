@@ -7,6 +7,13 @@
   set `SharedExamplePaths` (a list of paths or globs, e.g.
   `spec/support/**/*.rb`; default `[]`) to also resolve blocks defined in
   other files. Missing or unparseable listed files are skipped.
+- Fix a false positive in `RSpec/UnusedLet` when a same-file shared block is
+  included *inline* (`include_examples`/`include_context`) and defines-and-uses
+  a name that the including group also defines. Inline inclusion injects the
+  block's definitions into the including group, so the local same-named `let`
+  is the definition the block actually references and must not be flagged.
+  `it_behaves_like`/`it_should_behave_like`, which nest the block in their own
+  group, are unaffected and still flag such a `let`.
 - `RSpec/UnusedLet` now skips helper specs (rspec-rails `type: :helper`, or
   files under `spec/helpers`) by default, since the auto-included module may
   reference any `let` unseen. Set `CheckHelperSpecs: true` to check them.

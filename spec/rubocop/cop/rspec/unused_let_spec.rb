@@ -527,7 +527,9 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         end
 
         context "when the shared block defines the referenced name itself" do
-          it "flags the includer's like-named let" do
+          it "flags the includer's like-named let under `it_behaves_like` (nested)" do
+            # `it_behaves_like` nests the block in its own group, so its `helper`
+            # is isolated; the includer's `helper` is genuinely unused.
             expect_offense(<<~RUBY)
               RSpec.shared_examples "a thing" do
                 let(:helper) { 1 }
@@ -540,6 +542,76 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
                 ^^^^^^^^^^^^ `let(:helper)` is not referenced anywhere. Remove it or reference it in an example.
 
                 it_behaves_like "a thing"
+              end
+            RUBY
+          end
+
+          it "keeps the includer's like-named let under `include_examples` (inline)" do
+            # `include_examples` injects the block's `helper` into this group; the
+            # local `let(:helper)` overrides it and is the definition the block's
+            # example actually references, so it must not be flagged.
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                let(:helper) { 1 }
+
+                it { expect(helper).to eq(1) }
+              end
+
+              RSpec.describe Foo do
+                include_examples "a thing"
+                let(:helper) { 2 }
+              end
+            RUBY
+          end
+
+          it "keeps the includer's like-named let under `include_context` (inline)" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_context "a thing" do
+                let(:helper) { 1 }
+
+                it { expect(helper).to eq(1) }
+              end
+
+              RSpec.describe Foo do
+                include_context "a thing"
+                let(:helper) { 2 }
+              end
+            RUBY
+          end
+
+          it "flags a like-named let when the inline block defines but never uses it" do
+            # No one references `helper`: neither the block nor the includer. The
+            # definition merely leaks in and is redefined; both are dead.
+            expect_offense(<<~RUBY)
+              RSpec.shared_context "a thing" do
+                let(:helper) { 1 }
+              end
+
+              RSpec.describe Foo do
+                include_context "a thing"
+                let(:helper) { 2 }
+                ^^^^^^^^^^^^ `let(:helper)` is not referenced anywhere. Remove it or reference it in an example.
+              end
+            RUBY
+          end
+
+          it "does not let an inline inclusion suppress a like-named let in an ancestor" do
+            # The collision is scoped to the group carrying the inline inclusion;
+            # the ancestor's own `helper` is independent and unused.
+            expect_offense(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                let(:helper) { 1 }
+
+                it { expect(helper).to eq(1) }
+              end
+
+              RSpec.describe Foo do
+                let(:helper) { 2 }
+                ^^^^^^^^^^^^ `let(:helper)` is not referenced anywhere. Remove it or reference it in an example.
+
+                context "inner" do
+                  include_examples "a thing"
+                end
               end
             RUBY
           end

@@ -65,7 +65,11 @@ reach and conservative when it is not:
   the groups that include the block (possibly in other files) may reference them.
 - When an included shared example is **defined in the same file**, only the
   `let`s that block actually references are treated as used; every other `let`
-  stays checked.
+  stays checked. An **inline** inclusion (`include_examples` / `include_context`)
+  injects the block's own definitions into the including group, so a `let` there
+  that shares a name the block defines-and-uses is also kept. A **nested**
+  inclusion (`it_behaves_like` / `it_should_behave_like`) isolates the block in
+  its own group, so no such name leaks and a like-named `let` stays checked.
 - When the included block is **not defined in this file** (or is included under
   a non-literal name), the cop cannot tell what it references, so it leaves every
   `let` **visible at that inclusion point** alone. Sibling subtrees without such

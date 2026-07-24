@@ -70,9 +70,27 @@ module RuboCop
           # inclusion we cannot resolve (an unknown or dynamically named block)
           # falls back to silencing every `let` visible at this point.
           #
+          # An *inline* inclusion (`include_examples`/`include_context`) also
+          # injects the shared block's own definitions into this scope, unlike
+          # `it_behaves_like`, which nests them in their own group. So a name the
+          # block both defines and consumes turns a same-named `let` written in
+          # this scope into the live, referenced definition, which must not be
+          # flagged.
+          #
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           def record_inclusion: (RuboCop::AST::Node node, Scope scope) -> void
+
+          # Mark this scope's `let`s that collide with a definition the inline
+          # block both defines and consumes: inline injection makes the local
+          # definition the one actually referenced. Scoped to this group's own
+          # definitions, so it never suppresses an unrelated `let` in an ancestor
+          # or descendant group.
+          #
+          # @rbs name: Symbol | String
+          # @rbs node: RuboCop::AST::Node
+          # @rbs scope: Scope
+          def mark_inline_collisions: (Symbol | String name, RuboCop::AST::Node node, Scope scope) -> void
 
           # The group's own `let`/`subject`/hook/`def` definitions, whose bodies
           # run in the example's scope.

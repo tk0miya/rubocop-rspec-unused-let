@@ -51,6 +51,28 @@ module RuboCop
             resolve_from(name.to_s, inclusion_node, [])
           end
 
+          # The names the shared block of `name` (as resolved at `inclusion_node`)
+          # both *defines and references itself*. These matter only for an inline
+          # inclusion (`include_examples`/`include_context`), which injects the
+          # block's definitions into the including context: a `let` of the same
+          # name written there becomes the live, referenced definition and so
+          # must not be flagged. A name the block merely defines but never uses is
+          # excluded, so a genuinely unused same-named `let` is still checked.
+          #
+          # Only the block's own directly-defined names are considered; names
+          # leaked transitively through a further inline inclusion nested inside
+          # the block are not tracked (a rare, deeply nested case), where the cop
+          # stays as it was. `nil` when no definition is visible.
+          #
+          # @rbs name: Symbol | String
+          # @rbs inclusion_node: RuboCop::AST::Node
+          def self_consumed_definitions(name, inclusion_node) #: Set[Symbol]?
+            definition = lookup(name.to_s, inclusion_node)
+            return nil unless definition
+
+            definition.defs & definition.refs
+          end
+
           private
 
           attr_reader :external_definitions #: Array[definition_mapping] -- name-to-Definition maps for external files
