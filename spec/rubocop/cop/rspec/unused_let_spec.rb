@@ -7,63 +7,69 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
 
   context "with let" do
     context "when unused" do
-      it "flags it and removes the definition" do
-        expect_offense(<<~RUBY)
-          RSpec.describe Foo do
-            let(:used) { 1 }
-            let(:unused) { 2 }
-            ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+      context "with a `let` block" do
+        it "flags it and removes the definition" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              let(:used) { 1 }
+              let(:unused) { 2 }
+              ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
 
-            it { expect(used).to eq(1) }
-          end
-        RUBY
-
-        expect_correction(<<~RUBY)
-          RSpec.describe Foo do
-            let(:used) { 1 }
-
-            it { expect(used).to eq(1) }
-          end
-        RUBY
-      end
-
-      it "flags an unused let defined with a block-pass" do
-        expect_offense(<<~RUBY)
-          RSpec.describe Foo do
-            let(:unused, &:computed)
-            ^^^^^^^^^^^^^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
-
-            it { expect(true).to be(true) }
-          end
-        RUBY
-
-        expect_correction(<<~RUBY)
-          RSpec.describe Foo do
-
-            it { expect(true).to be(true) }
-          end
-        RUBY
-      end
-
-      it "flags an unused let defined with a do..end block" do
-        expect_offense(<<~RUBY)
-          RSpec.describe Foo do
-            let(:unused) do
-            ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
-              value = 1
-              value + 1
+              it { expect(used).to eq(1) }
             end
+          RUBY
 
-            it { expect(true).to be(true) }
-          end
-        RUBY
+          expect_correction(<<~RUBY)
+            RSpec.describe Foo do
+              let(:used) { 1 }
 
-        expect_correction(<<~RUBY)
-          RSpec.describe Foo do
+              it { expect(used).to eq(1) }
+            end
+          RUBY
+        end
+      end
 
-            it { expect(true).to be(true) }
-          end
-        RUBY
+      context "with a block-pass definition" do
+        it "flags it and removes the definition" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              let(:unused, &:computed)
+              ^^^^^^^^^^^^^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+
+          expect_correction(<<~RUBY)
+            RSpec.describe Foo do
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+        end
+      end
+
+      context "with a do..end block" do
+        it "flags it and removes the definition" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              let(:unused) do
+              ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+                value = 1
+                value + 1
+              end
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+
+          expect_correction(<<~RUBY)
+            RSpec.describe Foo do
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+        end
       end
 
       context "when a known gem's `type:` metadata does not apply" do
@@ -81,231 +87,263 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     end
 
     context "when referenced" do
-      it "in an example" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:value) { 1 }
+      context "when the reference is in an example" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              let(:value) { 1 }
 
-            it { expect(value).to eq(1) }
-          end
-        RUBY
-      end
-
-      it "in a nested example group" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:value) { 1 }
-
-            context "when nested" do
               it { expect(value).to eq(1) }
             end
-          end
-        RUBY
+          RUBY
+        end
       end
 
-      it "in an ancestor let block that runs in the example's scope" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:wrapper) { [inner] }
+      context "when the reference is in a nested example group" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              let(:value) { 1 }
 
-            context "when nested" do
-              let(:inner) { 1 }
-
-              it { expect(wrapper).to eq([1]) }
+              context "when nested" do
+                it { expect(value).to eq(1) }
+              end
             end
-          end
-        RUBY
+          RUBY
+        end
       end
 
-      it "through send" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:value) { 1 }
+      context "when the reference is in an ancestor let block that runs in the example's scope" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              let(:wrapper) { [inner] }
 
-            it { expect(send(:value)).to eq(1) }
-          end
-        RUBY
+              context "when nested" do
+                let(:inner) { 1 }
+
+                it { expect(wrapper).to eq([1]) }
+              end
+            end
+          RUBY
+        end
       end
 
-      it "through hash value omission", :ruby31 do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            let(:value) { 1 }
+      context "when the reference goes through send" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              let(:value) { 1 }
 
-            before { setup(value:) }
+              it { expect(send(:value)).to eq(1) }
+            end
+          RUBY
+        end
+      end
 
-            it { expect(true).to be(true) }
-          end
-        RUBY
+      context "when the reference uses hash value omission", :ruby31 do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              let(:value) { 1 }
+
+              before { setup(value:) }
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+        end
       end
 
       context "when part of an override chain" do
-        it "is redefined in a nested group (super chain)" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              let(:value) { 1 }
+        context "when redefined in a nested group (super chain)" do
+          it "keeps every member of the chain" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe Foo do
+                let(:value) { 1 }
 
-              context "when nested" do
-                let(:value) { super() + 1 }
+                context "when nested" do
+                  let(:value) { super() + 1 }
 
-                it { expect(value).to eq(2) }
+                  it { expect(value).to eq(2) }
+                end
               end
-            end
-          RUBY
+            RUBY
+          end
         end
 
-        it "flags the whole chain when no member is referenced" do
-          expect_offense(<<~RUBY)
-            RSpec.describe Foo do
-              let(:value) { 1 }
-              ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
-
-              context "when nested" do
-                let(:value) { super() + 1 }
+        context "when no member of the chain is referenced" do
+          it "flags the whole chain" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                let(:value) { 1 }
                 ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
 
-                it { do_something }
+                context "when nested" do
+                  let(:value) { super() + 1 }
+                  ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+                  it { do_something }
+                end
               end
-            end
-          RUBY
+            RUBY
+          end
         end
 
-        it "flags an inner override that its own group never references" do
-          expect_offense(<<~RUBY)
-            RSpec.describe Foo do
-              let(:value) { 1 }
+        context "when an inner override is never referenced by its own group" do
+          it "flags the inner override" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                let(:value) { 1 }
 
-              it { expect(value).to eq(1) }
+                it { expect(value).to eq(1) }
 
-              context "when overridden" do
+                context "when overridden" do
+                  let(:value) { 2 }
+                  ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+                  it { do_something }
+                end
+              end
+            RUBY
+          end
+        end
+
+        context "when only the inner override is referenced" do
+          it "keeps the outer definition" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe Foo do
+                let(:value) { 1 }
+
+                context "when overridden" do
+                  let(:value) { 2 }
+
+                  it { expect(value).to eq(2) }
+                end
+              end
+            RUBY
+          end
+        end
+
+        context "when a same-group redefinition chain is unreferenced" do
+          it "flags every definition in the chain" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                let(:value) { 1 }
+                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
                 let(:value) { 2 }
                 ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
 
                 it { do_something }
               end
-            end
-          RUBY
-        end
-
-        it "keeps the outer definition when only the inner override is referenced" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              let(:value) { 1 }
-
-              context "when overridden" do
-                let(:value) { 2 }
-
-                it { expect(value).to eq(2) }
-              end
-            end
-          RUBY
-        end
-
-        it "flags an unreferenced same-group redefinition chain" do
-          expect_offense(<<~RUBY)
-            RSpec.describe Foo do
-              let(:value) { 1 }
-              ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
-              let(:value) { 2 }
-              ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
-
-              it { do_something }
-            end
-          RUBY
+            RUBY
+          end
         end
       end
 
       context "when the same name is defined in sibling groups" do
-        it "flags the sibling that never references it, despite the other" do
-          expect_offense(<<~RUBY)
-            RSpec.describe Foo do
-              context "referenced" do
-                let(:value) { 1 }
+        context "when one sibling references it and the other does not" do
+          it "flags only the unreferenced sibling" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                context "referenced" do
+                  let(:value) { 1 }
 
-                it { expect(value).to eq(1) }
+                  it { expect(value).to eq(1) }
+                end
+
+                context "unreferenced" do
+                  let(:value) { 2 }
+                  ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+
+                  it { do_something }
+                end
               end
-
-              context "unreferenced" do
-                let(:value) { 2 }
-                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
-
-                it { do_something }
-              end
-            end
-          RUBY
+            RUBY
+          end
         end
 
-        it "does not let a sibling's plain reference reach the other's let" do
-          expect_offense(<<~RUBY)
-            RSpec.describe Foo do
-              context "references a name it never defines" do
-                it { expect(value).to eq(1) }
-              end
+        context "when a sibling makes a plain reference to the name" do
+          it "does not let it reach the other sibling's let" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                context "references a name it never defines" do
+                  it { expect(value).to eq(1) }
+                end
 
-              context "defines the name but never uses it" do
-                let(:value) { 2 }
-                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+                context "defines the name but never uses it" do
+                  let(:value) { 2 }
+                  ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
 
-                it { do_something }
+                  it { do_something }
+                end
               end
-            end
-          RUBY
+            RUBY
+          end
         end
 
-        it "does not let a sibling's helper reference reach the other's let" do
-          expect_offense(<<~RUBY)
-            RSpec.describe Foo do
-              context "references a name from a helper" do
-                let(:proxy) { value }
-                ^^^^^^^^^^^ `let(:proxy)` is not referenced anywhere. Remove it or reference it in an example.
-              end
+        context "when a sibling references the name from a helper" do
+          it "does not let it reach the other sibling's let" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                context "references a name from a helper" do
+                  let(:proxy) { value }
+                  ^^^^^^^^^^^ `let(:proxy)` is not referenced anywhere. Remove it or reference it in an example.
+                end
 
-              context "defines the name but never uses it" do
-                let(:value) { 2 }
-                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+                context "defines the name but never uses it" do
+                  let(:value) { 2 }
+                  ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
 
-                it { do_something }
+                  it { do_something }
+                end
               end
-            end
-          RUBY
+            RUBY
+          end
         end
       end
 
       context "when `type: :validator` (rspec-validator_spec_helper) is in scope" do
-        it "ignores `let(:value)` overridden at the top level" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe JsonFormatValidator, type: :validator do
-              let(:value) { "String" }
+        context "when `let(:value)` is overridden at the top level" do
+          it "ignores it" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe JsonFormatValidator, type: :validator do
+                let(:value) { "String" }
 
-              it { is_expected.to be_invalid }
-            end
-          RUBY
+                it { is_expected.to be_invalid }
+              end
+            RUBY
+          end
         end
 
-        it "ignores `let(:value)` overridden in a nested context" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe JsonFormatValidator, type: :validator do
-              describe "#validate_each" do
-                context "when not JSON" do
-                  let(:value) { "String" }
+        context "when `let(:value)` is overridden in a nested context" do
+          it "ignores it" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe JsonFormatValidator, type: :validator do
+                describe "#validate_each" do
+                  context "when not JSON" do
+                    let(:value) { "String" }
 
-                  it { is_expected.to be_invalid }
+                    it { is_expected.to be_invalid }
+                  end
                 end
               end
-            end
-          RUBY
+            RUBY
+          end
         end
 
-        it "still flags a let whose name is not one the helper injects" do
-          expect_offense(<<~RUBY)
-            RSpec.describe JsonFormatValidator, type: :validator do
-              let(:value) { "String" }
-              let(:unused) { 1 }
-              ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+        context "when a let's name is not one the helper injects" do
+          it "still flags it" do
+            expect_offense(<<~RUBY)
+              RSpec.describe JsonFormatValidator, type: :validator do
+                let(:value) { "String" }
+                let(:unused) { 1 }
+                ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
 
-              it { is_expected.to be_invalid }
-            end
-          RUBY
+                it { is_expected.to be_invalid }
+              end
+            RUBY
+          end
         end
       end
     end

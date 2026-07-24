@@ -51,7 +51,18 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::Scope do
   end
 
   describe "#example?" do
-    it { expect(build_scope(kind: :example).example?).to be(true) }
-    it { expect(build_scope(kind: :shared).example?).to be(false) }
+    subject { scope.example? }
+
+    context "when the scope is an example group" do
+      let(:scope) { build_scope }
+
+      it { is_expected.to be(true) }
+    end
+
+    context "when the scope is a shared group" do
+      let(:scope) { build_scope(kind: :shared) }
+
+      it { is_expected.to be(false) }
+    end
   end
 end
