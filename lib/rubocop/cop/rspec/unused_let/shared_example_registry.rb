@@ -7,32 +7,20 @@ module RuboCop
   module Cop
     module RSpec
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
-        # A file-wide index of the `shared_examples`/`shared_context` blocks
-        # defined in the source under investigation.
-        #
-        # RuboCop analyzes one file at a time, so a shared block defined in
-        # *another* file is invisible and any inclusion of it must stay
-        # conservative. But when the definition lives in the same file we can
-        # read exactly which `let`-visible names it consumes — its *free
-        # references*: the names referenced anywhere in its subtree that it does
-        # not itself define. An inclusion then only needs to justify those
-        # names, instead of silencing every `let` in scope.
-        #
-        # Lookup follows RSpec's own scoping. A `shared_examples` inside a group
-        # is visible only to that group and its descendants, and an inner
-        # definition shadows an outer one of the same name. {#resolve} therefore
-        # takes the inclusion node and walks its enclosing groups from the
-        # innermost outward (then the file's top level), returning the *nearest*
-        # matching definition — mirroring how RSpec picks which shared block a
-        # name refers to.
-        #
-        # {#resolve} returns the free references for the resolved name, or `nil`
-        # when no definition is visible or it cannot be resolved (a dynamic or
-        # unknown nested inclusion, or an inclusion cycle) — in which case the
-        # caller falls back to treating every visible `let` as referenced.
+        # An index of the `shared_examples`/`shared_context` blocks available
+        # when resolving a spec's inclusions: those defined in the file it is
+        # built from, plus definitions supplied for shared examples defined
+        # elsewhere in the project. Given an inclusion (`it_behaves_like`,
+        # `include_context`, ...), {#resolve} maps it to the named block's *free
+        # references* — the `let`-visible names its subtree uses but does not
+        # itself define — following RSpec's scoping (see {#lookup}), with the
+        # supplied external definitions as a global fallback.
         class SharedExampleRegistry
           include Matchers
           include References
+
+          # @rbs!
+          #   type definition_mapping = Hash[String, Array[Definition]]
 
           # One shared block's region data, gathered across its whole subtree.
           Definition = Struct.new(
@@ -43,10 +31,14 @@ module RuboCop
             :inclusions  #: Array[[ String?, RuboCop::AST::Node ]] -- included blocks, each with its inclusion node
           )
 
+          attr_reader :local_definitions #: definition_mapping -- name-to-Definition map for this file
+
           # @rbs ast: RuboCop::AST::Node?
-          def initialize(ast) #: void
-            @definitions = {} #: Hash[String, Array[Definition]]
+          # @rbs external_definitions: Array[definition_mapping]
+          def initialize(ast, external_definitions = []) #: void
+            @local_definitions = {} #: definition_mapping
             scan(ast) if ast
+            @external_definitions = external_definitions
           end
 
           # The free references an inclusion of `name` at `inclusion_node`
@@ -61,7 +53,7 @@ module RuboCop
 
           private
 
-          attr_reader :definitions #: Hash[String, Array[Definition]]
+          attr_reader :external_definitions #: Array[definition_mapping] -- name-to-Definition maps for external files
 
           # Index every shared block in the file under its name. Names can carry
           # more than one definition (in different scopes, or a same-scope
@@ -71,7 +63,7 @@ module RuboCop
           def scan(ast) #: void
             [ast, *ast.each_descendant(:block)].each do |node|
               name = shared_group_name(node)
-              (definitions[name.to_s] ||= []) << build_definition(node) if name
+              (local_definitions[name.to_s] ||= []) << build_definition(node) if name
             end
           end
 
@@ -130,24 +122,41 @@ module RuboCop
 
           # The definition of `name` that RSpec would apply at `inclusion_node`:
           # the innermost enclosing group that defines the name wins (shadowing
-          # outer ones), falling back to the file's top-level definitions. Within
-          # the winning scope the last definition wins, mirroring RSpec, which
-          # warns on a redefinition and keeps the latest. `nil` when no
-          # definition is visible here.
+          # outer ones), falling back to the file's top-level definitions, and
+          # finally to the external files' top-level definitions. Within a
+          # scope the last definition wins, mirroring RSpec, which warns on a
+          # redefinition and keeps the latest. `nil` when no definition is
+          # visible here.
           #
           # @rbs name: String
           # @rbs inclusion_node: RuboCop::AST::Node
           def lookup(name, inclusion_node) #: Definition?
-            candidates = definitions[name]
-            return nil unless candidates
+            candidates = local_definitions[name]
+            if candidates
+              inclusion_node.each_ancestor(:block) do |group|
+                next unless spec_group?(group)
 
-            inclusion_node.each_ancestor(:block) do |group|
-              next unless spec_group?(group)
-
-              found = candidates.select { _1.owner&.equal?(group) }.last
-              return found if found
+                found = candidates.select { _1.owner&.equal?(group) }.last
+                return found if found
+              end
+              top = candidates.select { _1.owner.nil? }.last
+              return top if top
             end
-            candidates.select { _1.owner.nil? }.last
+
+            lookup_external(name)
+          end
+
+          # The last-registered top-level definition of `name` among the
+          # external definitions, or `nil`. Only top-level (globally visible)
+          # definitions are eligible: a shared block nested inside a group is not
+          # globally visible, exactly as in RSpec.
+          #
+          # @rbs name: String
+          def lookup_external(name) #: Definition?
+            external_definitions
+              .flat_map { _1[name] || [] }
+              .select { _1.owner.nil? }
+              .last
           end
 
           # The free references the definition consumes: the names it references

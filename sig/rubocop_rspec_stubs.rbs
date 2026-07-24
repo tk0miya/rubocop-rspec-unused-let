@@ -8,6 +8,10 @@ module RuboCop
       class Base
         def cop_config: () -> Hash[String, untyped]
 
+        def config: () -> RuboCop::Config
+
+        def target_ruby_version: () -> Numeric
+
         def processed_source: () -> RuboCop::AST::ProcessedSource
 
         def add_offense: (untyped node, ?message: String) -> void
@@ -22,10 +26,24 @@ module RuboCop
     end
   end
 
+  # Raised by RuboCop for internal errors (e.g. an unreadable source); only its
+  # presence is needed here, to rescue around `ProcessedSource.from_file`.
+  class Error < StandardError
+  end
+
+  # The RuboCop config for the file under investigation; only the path-parameter
+  # base directory used to resolve `SharedExamplePaths` is declared.
+  class Config
+    def base_dir_for_path_parameters: () -> String
+  end
+
   module AST
-    # The collection's RBS omits `file_path`; declare only what this gem uses.
+    # The collection's RBS omits `file_path` and `from_file`; declare only what
+    # this gem uses.
     class ProcessedSource
       def file_path: () -> String?
+
+      def self.from_file: (String path, Numeric ruby_version) -> RuboCop::AST::ProcessedSource
     end
   end
 

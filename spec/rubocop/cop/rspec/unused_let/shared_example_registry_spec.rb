@@ -311,5 +311,86 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::SharedExampleRegistry do
 
       it { is_expected.to be_nil }
     end
+
+    context "when the shared block is supplied as an external definition" do
+      let(:registry) { described_class.new(root, [described_class.new(parse(external)).local_definitions]) }
+      let(:external) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          it { expect(value).to eq(1) }
+        end
+      RUBY
+      let(:source) { <<~RUBY }
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it { is_expected.to include(:value) }
+    end
+
+    context "when an external inclusion chains to another external block" do
+      let(:registry) { described_class.new(root, [described_class.new(parse(external)).local_definitions]) }
+      let(:external) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          include_examples "inner"
+        end
+
+        RSpec.shared_examples "inner" do
+          it { expect(value).to eq(1) }
+        end
+      RUBY
+      let(:source) { <<~RUBY }
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it "folds in the external nested block's free references" do
+        expect(subject).to include(:value)
+      end
+    end
+
+    context "when an in-file definition redefines an external one" do
+      let(:registry) { described_class.new(root, [described_class.new(parse(external)).local_definitions]) }
+      let(:external) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          it { expect(external_ref).to eq(1) }
+        end
+      RUBY
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          it { expect(in_file_ref).to eq(1) }
+        end
+
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it "prefers the in-file definition over the external one" do
+        expect(subject).to include(:in_file_ref)
+        expect(subject).not_to include(:external_ref)
+      end
+    end
+
+    context "when an external block is nested inside a group" do
+      let(:registry) { described_class.new(root, [described_class.new(parse(external)).local_definitions]) }
+      let(:external) { <<~RUBY }
+        RSpec.describe Bar do
+          shared_examples "a thing" do
+            it { expect(value).to eq(1) }
+          end
+        end
+      RUBY
+      let(:source) { <<~RUBY }
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it "is not globally visible, so it does not resolve" do
+        expect(subject).to be_nil
+      end
+    end
   end
 end

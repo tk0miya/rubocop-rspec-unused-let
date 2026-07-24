@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "fileutils"
+require "tmpdir"
+
 RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
   include_context "with default RSpec/Language config"
 
@@ -725,6 +728,120 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
             end
           RUBY
         end
+      end
+    end
+  end
+
+  context "with shared examples defined in external files" do
+    let(:support_dir) { Dir.mktmpdir }
+
+    before do
+      File.write(File.join(support_dir, "shared.rb"), <<~RUBY)
+        RSpec.shared_examples "an external thing" do
+          it { expect(used).to eq(1) }
+        end
+      RUBY
+    end
+
+    after { FileUtils.remove_entry(support_dir) }
+
+    context "when SharedExamplePaths points at the file" do
+      let(:cop_config) do
+        {
+          "CheckLetBang" => true,
+          "SharedExamplePaths" => [File.join(support_dir, "*.rb")]
+        }
+      end
+
+      it "keeps the lets the external block references and flags the rest" do
+        expect_offense(<<~RUBY)
+          RSpec.describe Foo do
+            let(:used) { 1 }
+            let(:unused) { 2 }
+            ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+            it_behaves_like "an external thing"
+          end
+        RUBY
+      end
+    end
+
+    context "when SharedExamplePaths is left empty" do
+      let(:cop_config) { { "CheckLetBang" => true, "SharedExamplePaths" => [] } }
+
+      it "stays conservative and silences every visible let" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            let(:used) { 1 }
+            let(:unused) { 2 }
+
+            it_behaves_like "an external thing"
+          end
+        RUBY
+      end
+    end
+
+    context "when SharedExamplePaths matches no files" do
+      let(:cop_config) do
+        {
+          "CheckLetBang" => true,
+          "SharedExamplePaths" => [File.join(support_dir, "missing", "*.rb")]
+        }
+      end
+
+      it "tolerates the empty match and stays conservative" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            let(:unused) { 1 }
+
+            it_behaves_like "an external thing"
+          end
+        RUBY
+      end
+    end
+
+    context "when the same file backs many investigations" do
+      let(:cop_config) do
+        {
+          "CheckLetBang" => true,
+          "SharedExamplePaths" => [File.join(support_dir, "*.rb")]
+        }
+      end
+
+      around do |example|
+        described_class.external_definitions_cache.clear
+        example.run
+        described_class.external_definitions_cache.clear
+      end
+
+      it "parses and indexes each external file once, reusing the cache" do
+        path = File.expand_path(File.join(support_dir, "shared.rb"))
+        allow(RuboCop::AST::ProcessedSource).to receive(:from_file).and_call_original
+
+        3.times { cop.send(:definitions_for, path) }
+
+        expect(RuboCop::AST::ProcessedSource).to have_received(:from_file).once
+      end
+    end
+
+    context "when a pre-loaded file cannot be parsed" do
+      before { File.write(File.join(support_dir, "broken.rb"), "def oops(") }
+
+      let(:cop_config) do
+        {
+          "CheckLetBang" => true,
+          "SharedExamplePaths" => [File.join(support_dir, "broken.rb")]
+        }
+      end
+
+      it "skips the unparseable file and stays conservative" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            let(:unused) { 1 }
+
+            it_behaves_like "an external thing"
+          end
+        RUBY
       end
     end
   end

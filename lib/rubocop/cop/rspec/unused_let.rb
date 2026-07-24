@@ -31,7 +31,10 @@ module RuboCop
       # * When the included block is not defined in this file (or is included
       #   under a dynamically computed name), every `let` visible at that
       #   inclusion point is ignored, because the shared block may reference any
-      #   of them.
+      #   of them. Point `SharedExamplePaths` at the files that define your
+      #   shared blocks (usually the `spec/support` helpers) and the cop
+      #   pre-loads them, resolving those inclusions precisely just like an
+      #   in-file definition instead of falling back to this conservative case.
       # * `let` definitions whose name is implicitly consumed by a well-known
       #   gem's shared context (identified by the `type:` metadata on an
       #   example group or one of its ancestors) are ignored. Currently this
@@ -96,6 +99,24 @@ module RuboCop
       #     it { expect(helper.greeting).to eq("Hi") }
       #   end
       #
+      # @example SharedExamplePaths: [] (default)
+      #   # good - the shared block is defined in another file the cop does not
+      #   # read, so every `let` visible at the inclusion is left alone
+      #   describe Foo do
+      #     let(:unused) { 1 }
+      #
+      #     it_behaves_like "an external thing"
+      #   end
+      #
+      # @example SharedExamplePaths: ["spec/support/**/*.rb"]
+      #   # bad - the shared block is pre-loaded, so a `let` it never references
+      #   # is flagged as usual
+      #   describe Foo do
+      #     let(:unused) { 1 }
+      #
+      #     it_behaves_like "an external thing"
+      #   end
+      #
       # @safety
       #   Autocorrect deletes the flagged `let` definition. That is behaviorally
       #   safe for a plain `let`, whose block never runs when the helper is
@@ -111,12 +132,23 @@ module RuboCop
         MSG = "`%<helper>s(:%<name>s)` is not referenced anywhere. " \
               "Remove it or reference it in an example."
 
+        # @rbs self.@external_definitions_cache: Hash[String, [ Time, SharedExampleRegistry::definition_mapping? ]]?
+
+        # Process-wide cache of the external files' definition maps, keyed by
+        # absolute path to `[mtime, definitions | nil]`. It lives on the class
+        # because RuboCop builds a fresh cop instance per inspected file, so a
+        # support file shared by many specs is scanned once for the whole run,
+        # not once per spec.
+        def self.external_definitions_cache #: Hash[String, [ Time, SharedExampleRegistry::definition_mapping? ]]
+          @external_definitions_cache ||= {}
+        end
+
         def on_new_investigation #: void
           super
           @stack = []
           @builder = ScopeBuilder.new(
             processed_source.file_path,
-            SharedExampleRegistry.new(processed_source.ast)
+            SharedExampleRegistry.new(processed_source.ast, external_definitions)
           )
         end
 
@@ -157,6 +189,56 @@ module RuboCop
 
         attr_reader :stack #: Array[Scope]
         attr_reader :builder #: ScopeBuilder
+
+        # The external files' definition maps to hand the registry (typically
+        # the `spec/support` helpers), excluding the file under investigation so
+        # it is never indexed twice. They let the cop resolve inclusions of
+        # shared blocks defined outside this file precisely, instead of
+        # conservatively silencing every visible `let`.
+        #
+        # Globbing runs per investigation, so files added mid-run are picked up;
+        # each file's definition map is cached (see {.external_definitions_cache}).
+        def external_definitions #: Array[SharedExampleRegistry::definition_mapping]
+          patterns = Array(cop_config["SharedExamplePaths"])
+          return [] if patterns.empty?
+
+          path = processed_source.file_path
+          current = File.expand_path(path) if path
+          base = config.base_dir_for_path_parameters
+          patterns
+            .flat_map { Dir.glob(File.expand_path(_1, base)) }
+            .map { File.expand_path(_1) }
+            .uniq
+            .sort
+            .reject { _1 == current }
+            .filter_map { definitions_for(_1) }
+        end
+
+        # The cached definition map for one external file, or `nil` when it
+        # cannot be read or parsed — in which case the cop stays conservative
+        # rather than crashing the run.
+        #
+        # @rbs path: String
+        def definitions_for(path) #: SharedExampleRegistry::definition_mapping?
+          mtime = File.mtime(path)
+          cache = self.class.external_definitions_cache
+          cached = cache[path]
+          return cached.last if cached && cached.first == mtime
+
+          definitions = build_definitions_for(path)
+          cache[path] = [mtime, definitions]
+          definitions
+        rescue SystemCallError
+          nil
+        end
+
+        # @rbs path: String
+        def build_definitions_for(path) #: SharedExampleRegistry::definition_mapping?
+          ast = RuboCop::AST::ProcessedSource.from_file(path, target_ruby_version).ast
+          ast && SharedExampleRegistry.new(ast).local_definitions
+        rescue RuboCop::Error, SystemCallError
+          nil
+        end
 
         # Resolve `scope`'s references against the enclosing groups (the scopes
         # currently on the stack) and mark every definition they reach.
