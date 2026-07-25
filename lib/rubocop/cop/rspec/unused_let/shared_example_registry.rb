@@ -51,6 +51,19 @@ module RuboCop
             resolve_from(name.to_s, inclusion_node, [])
           end
 
+          # The names the shared block of `name` both defines and references
+          # (`defs & refs`), limited to the block's own definitions. Empty when
+          # no definition is visible at `inclusion_node`.
+          #
+          # @rbs name: Symbol | String
+          # @rbs inclusion_node: RuboCop::AST::Node
+          def bound_references(name, inclusion_node) #: Set[Symbol]
+            definition = lookup(name.to_s, inclusion_node)
+            return Set.new unless definition
+
+            definition.defs & definition.refs
+          end
+
           private
 
           attr_reader :external_definitions #: Array[definition_mapping] -- name-to-Definition maps for external files

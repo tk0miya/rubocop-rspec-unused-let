@@ -68,11 +68,24 @@ module RuboCop
           # A shared inclusion whose block is defined in this file consumes only
           # its free references, recorded like any other example reference. An
           # inclusion we cannot resolve (an unknown or dynamically named block)
-          # falls back to silencing every `let` visible at this point.
+          # falls back to silencing every `let` visible at this point. An inline
+          # inclusion additionally reaches a same-named `let` here through its
+          # bound references, via {#mark_inline_bound_references}.
           #
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           def record_inclusion: (RuboCop::AST::Node node, Scope scope) -> void
+
+          # An inline inclusion injects the block's definitions here, so its bound
+          # references (names it both defines and references) reach a same-named
+          # `let` in this scope — mark those referenced. Scoped to this group's
+          # own definitions, so it never suppresses an unrelated `let` in an
+          # ancestor or descendant group.
+          #
+          # @rbs name: Symbol | String
+          # @rbs node: RuboCop::AST::Node
+          # @rbs scope: Scope
+          def mark_inline_bound_references: (Symbol | String name, RuboCop::AST::Node node, Scope scope) -> void
 
           # The group's own `let`/`subject`/hook/`def` definitions, whose bodies
           # run in the example's scope.

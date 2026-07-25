@@ -49,6 +49,14 @@ module RuboCop
           # @rbs inclusion_node: RuboCop::AST::Node
           def resolve: (Symbol | String name, RuboCop::AST::Node inclusion_node) -> Set[Symbol]?
 
+          # The names the shared block of `name` both defines and references
+          # (`defs & refs`), limited to the block's own definitions. Empty when
+          # no definition is visible at `inclusion_node`.
+          #
+          # @rbs name: Symbol | String
+          # @rbs inclusion_node: RuboCop::AST::Node
+          def bound_references: (Symbol | String name, RuboCop::AST::Node inclusion_node) -> Set[Symbol]
+
           private
 
           attr_reader external_definitions: Array[definition_mapping]
