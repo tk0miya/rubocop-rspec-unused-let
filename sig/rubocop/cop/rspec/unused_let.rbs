@@ -18,17 +18,19 @@ module RuboCop
       # * `let` definitions inside a `shared_examples`/`shared_context` block are
       #   ignored, because their consumers live in the (possibly external)
       #   including example groups.
-      # * When an example group includes a shared example whose block is defined
-      #   in the same file (`it_behaves_like`, `include_examples`,
-      #   `include_context`, ...), only the `let`s that block actually references
-      #   are treated as used; the rest stay checked.
-      # * When the included block is not defined in this file (or is included
-      #   under a dynamically computed name), every `let` visible at that
-      #   inclusion point is ignored, because the shared block may reference any
-      #   of them. Point `SharedExamplePaths` at the files that define your
-      #   shared blocks (usually the `spec/support` helpers) and the cop
-      #   pre-loads them, resolving those inclusions precisely just like an
-      #   in-file definition instead of falling back to this conservative case.
+      # * When an example group includes a shared example (`it_behaves_like`,
+      #   `include_examples`, `include_context`, ...) whose block is in reach,
+      #   only the `let`s that block actually references are treated as used;
+      #   the rest stay checked. A block is in reach when RSpec's scoping makes
+      #   a definition of the included name visible at that point, and the same
+      #   holds for whatever it includes in turn.
+      # * When it is not in reach (a dynamically named inclusion, or one whose
+      #   chain cannot be followed), every `let` visible there is ignored,
+      #   because the shared block may reference any of them. Point
+      #   `SharedExamplePaths` at the files that define your shared blocks
+      #   (usually the `spec/support` helpers) and the cop pre-loads their
+      #   top-level blocks, resolving those inclusions precisely instead of
+      #   falling back to this conservative case.
       # * `let` definitions whose name is implicitly consumed by a well-known
       #   gem's shared context (identified by the `type:` metadata on an
       #   example group or one of its ancestors) are ignored. Currently this
@@ -42,7 +44,14 @@ module RuboCop
       #   methods may reference any `let` in scope, invisibly to single-file
       #   analysis. Set `CheckHelperSpecs: true` to check them anyway.
       #
-      # Dynamic references such as `send(:foo)` are treated as usages.
+      # How a `let` in the including group whose name the shared block also
+      # defines is treated depends on the inclusion, as shown below. That match
+      # is approximate: it can both leave a dead `let` unflagged and flag a
+      # live one.
+      #
+      # Dynamic references are treated as usages too: a call to `send`,
+      # `public_send`, `__send__`, `method` or `respond_to?` with a literal name
+      # (e.g. `send(:foo)`) references the `let` it names.
       #
       # @example
       #   # bad
@@ -58,6 +67,26 @@ module RuboCop
       #     let(:used) { 1 }
       #
       #     it { expect(used).to eq(1) }
+      #   end
+      #
+      # @example a same-named `let` in the including group
+      #   RSpec.shared_examples "uses size" do
+      #     let(:size) { 1 }
+      #     it { expect(size).to be_positive }
+      #   end
+      #
+      #   # good - `include_examples` injects the block here, so this `let` is
+      #   # the override it uses
+      #   describe Foo do
+      #     include_examples "uses size"
+      #     let(:size) { 2 }
+      #   end
+      #
+      #   # bad - `it_behaves_like` runs the block in its own group, which uses
+      #   # its own `let(:size)`
+      #   describe Bar do
+      #     it_behaves_like "uses size"
+      #     let(:size) { 2 }
       #   end
       #
       # @example CheckLetBang: true (default)

@@ -5,9 +5,10 @@ unreferenced RSpec `let` definitions.
 
 It adds a single cop, `RSpec/UnusedLet`, which flags `let` (and optionally
 `let!`) definitions whose name is never referenced within their scope. The cop
-resolves `shared_examples` references precisely when the shared block is defined
-in the same file, and stays conservative otherwise, so that it avoids false
-positives that a naive implementation would produce.
+resolves `shared_examples` references precisely when it can see the shared
+block — in the same file, or in a file listed in `SharedExamplePaths` — and
+stays conservative otherwise, so that it avoids false positives that a naive
+implementation would produce.
 
 ## Installation
 
@@ -49,28 +50,42 @@ RSpec.describe Foo do
 end
 ```
 
-A `let` is considered *used* when its name appears as a bare method call
-anywhere in its scope — inside examples, hooks (`before`/`after`/`around`),
-`subject`, other `let` blocks, and nested example groups. Dynamic references
-such as `send(:name)` / `public_send("name")` are also treated as usages.
+A `let` is considered *used* when its name appears as a bare method call in any
+of these places:
+
+- in an example of the group that defines it, or of any group nested inside that
+  one — but not in an **ancestor's** example
+- in a helper body — a hook (`before`/`after`/`around`), `subject`/`subject!`,
+  another `let`, or a plain `def` method written at a group's level — of any of
+  those groups **or of an ancestor**
+
+Any of these may instead be a dynamic dispatch with a literal name: `send`,
+`public_send`, `__send__`, `method` or `respond_to?`.
 
 ## How it handles `shared_examples`
 
 Because RuboCop analyzes one file at a time, a `let` can be consumed by a shared
-example block defined in another file. The cop is precise when the block is in
-reach and conservative when it is not:
+example block defined in another file. An inclusion is **in reach** when the cop
+can resolve it: the name is a literal, RSpec's scoping makes a definition of it
+visible at that point, and the same holds for whatever that block includes in
+turn. The cop is precise for those and conservative for the rest:
 
 - `let` definitions **inside** a `shared_examples` / `shared_context` block —
   including any nested `context`/`describe` within it — are never flagged, since
   the groups that include the block (possibly in other files) may reference them.
-- When an included shared example is **defined in the same file**, only the
-  `let`s that block actually references are treated as used; every other `let`
-  stays checked.
-- When the included block is **not defined in this file** (or is included under
-  a non-literal name), the cop cannot tell what it references, so it leaves every
-  `let` **visible at that inclusion point** alone. Sibling subtrees without such
-  an inclusion are still checked. To resolve blocks defined in other files (e.g.
-  under `spec/support`), list them in `SharedExamplePaths` (see below).
+- When the included block is in reach, only the `let`s it actually references
+  are treated as used; every other `let` stays checked.
+- When it is not in reach, the cop cannot tell what it references, so it leaves
+  every `let` **visible at that inclusion point** alone. Sibling subtrees
+  without such an inclusion are still checked. To resolve blocks defined in
+  other files (e.g. under `spec/support`), list them in `SharedExamplePaths`
+  (see below).
+- Whether a `let` in the **including** group with the *same name* as one in the
+  shared block is checked depends on the inclusion: an inline one
+  (`include_examples` / `include_context`) makes it the override, so it counts
+  as used when the block references the name; a nested one (`it_behaves_like` /
+  `it_should_behave_like`) does not. The match is approximate; see Known
+  limitations.
 
 ```ruby
 RSpec.shared_examples "uses a" do
@@ -94,13 +109,33 @@ RSpec.describe Foo do
 
   context "with shared" do
     let(:b) { 2 }            # skipped: same
-    it_behaves_like "an external thing"   # defined in another file
+    it_behaves_like "an external thing"   # in another file, not pre-loaded
   end
 
   context "other" do
     let(:c) { 3 }            # checked: the shared block cannot see `c`
     it { expect(c).to eq(3) }
   end
+end
+```
+
+An inline inclusion lets the including group override a name the shared block
+uses, where a nested one does not:
+
+```ruby
+RSpec.shared_examples "uses size" do
+  let(:size) { 1 }
+  it { expect(size).to be_positive }
+end
+
+RSpec.describe Foo do
+  include_examples "uses size"
+  let(:size) { 2 }   # skipped: overrides the `size` the shared block uses
+end
+
+RSpec.describe Bar do
+  it_behaves_like "uses size"
+  let(:size) { 2 }   # flagged: the nested group uses its own `size`
 end
 ```
 
@@ -123,6 +158,8 @@ Paths resolve relative to the `.rubocop.yml` that sets them (as `Include` and
 `Exclude` do). A listed file that is missing or cannot be parsed is skipped, and
 when a name is defined both in a pre-loaded file and in the spec itself, the
 in-file definition wins (mirroring RSpec's load order).
+
+Only a pre-loaded file's top-level blocks are resolved.
 
 ## Autocorrect
 
@@ -163,6 +200,12 @@ RSpec/UnusedLet:
   # may reference any `let` in scope — invisibly to single-file analysis. Set
   # this to `true` to check them anyway, accepting the risk of false positives.
   CheckHelperSpecs: false
+
+  # Files defining shared examples/contexts, as paths or globs. Empty by
+  # default. Listing them lets the cop resolve inclusions of blocks defined in
+  # other files precisely instead of silencing every visible `let` — see
+  # "Resolving shared examples defined in other files" above.
+  SharedExamplePaths: []
 ```
 
 ## Known-gem support
@@ -205,8 +248,15 @@ end
 
 ## Known limitations
 
-- Analysis is limited to a single file; references reachable only across files
-  (e.g. through external shared examples) are intentionally not flagged.
+- Analysis is limited to the file under inspection plus the files listed in
+  `SharedExamplePaths`. A `let` reached only from outside that range (a module
+  mixed into the example group) or through a name that is not statically known
+  (`send(attribute)`) can be a false positive. The cases the sections above
+  cover are deliberately left unflagged instead.
+- The override an inline inclusion allows is matched approximately: it can flag
+  a `let` the shared block does use through a further inclusion of its own, and
+  leave one alone that RSpec would in fact render dead — a `let` written before
+  the inclusion, say.
 
 ## Development
 

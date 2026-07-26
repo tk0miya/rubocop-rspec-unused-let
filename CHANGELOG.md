@@ -3,10 +3,15 @@
 - `RSpec/UnusedLet` now resolves `shared_examples`/`shared_context`
   inclusions precisely instead of silencing every `let` in scope: it works
   out which `let`s the shared block actually references and treats only
-  those as used. Blocks defined in the same file are handled automatically;
-  set `SharedExamplePaths` (a list of paths or globs, e.g.
-  `spec/support/**/*.rb`; default `[]`) to also resolve blocks defined in
-  other files. Missing or unparseable listed files are skipped.
+  those as used, staying conservative for an inclusion it cannot resolve.
+  Blocks in the file under inspection are handled automatically; set
+  `SharedExamplePaths` (a list of paths or globs, e.g.
+  `spec/support/**/*.rb`; default `[]`) to also resolve the top-level
+  blocks of other files. Missing or unparseable listed files are skipped.
+- `RSpec/UnusedLet` no longer flags a `let` that overrides one a shared
+  block defines and uses, when that block is included inline with
+  `include_examples` / `include_context`. Included with `it_behaves_like`,
+  the block keeps its own definition, so the outer `let` stays checked.
 - `RSpec/UnusedLet` now skips helper specs (rspec-rails `type: :helper`, or
   files under `spec/helpers`) by default, since the auto-included module may
   reference any `let` unseen. Set `CheckHelperSpecs: true` to check them.
