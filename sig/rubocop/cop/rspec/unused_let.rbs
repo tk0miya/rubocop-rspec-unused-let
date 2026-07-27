@@ -3,13 +3,17 @@
 module RuboCop
   module Cop
     module RSpec
-      # Checks for `let` definitions that are never referenced.
+      # Checks for `let` definitions and helper methods that are never
+      # referenced.
       #
       # A `let` (or `let!`) whose name is never used within its scope is dead
       # code that makes specs harder to read. This cop flags such definitions.
+      # A helper method (`def`) written at an example group's level becomes an
+      # instance method on the group's example class, so it is checked the same
+      # way.
       # Dynamic references count as usages too: a call to `send`, `public_send`,
       # `__send__`, `method` or `respond_to?` with a literal name (e.g.
-      # `send(:foo)`) references the `let` it names.
+      # `send(:foo)`) references the `let` or method it names.
       #
       # Because RuboCop analyzes one file at a time, the cop stays silent
       # wherever it cannot see every possible reference: `let`s inside a
@@ -36,6 +40,25 @@ module RuboCop
       #   # good
       #   describe Foo do
       #     let(:used) { 1 }
+      #
+      #     it { expect(used).to eq(1) }
+      #   end
+      #
+      # @example a helper method
+      #   # bad
+      #   describe Foo do
+      #     def unused
+      #       1
+      #     end
+      #
+      #     it { expect(true).to be(true) }
+      #   end
+      #
+      #   # good
+      #   describe Foo do
+      #     def used
+      #       1
+      #     end
       #
       #     it { expect(used).to eq(1) }
       #   end
@@ -124,6 +147,8 @@ module RuboCop
         include RangeHelp
 
         MSG: ::String
+
+        DEF_MSG: ::String
 
         self.@external_definitions_cache: Hash[String, [ Time, SharedExampleRegistry::definition_mapping? ]]?
 

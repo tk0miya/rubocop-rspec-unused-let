@@ -9,13 +9,17 @@ require_relative "unused_let/shared_example_registry"
 module RuboCop
   module Cop
     module RSpec
-      # Checks for `let` definitions that are never referenced.
+      # Checks for `let` definitions and helper methods that are never
+      # referenced.
       #
       # A `let` (or `let!`) whose name is never used within its scope is dead
       # code that makes specs harder to read. This cop flags such definitions.
+      # A helper method (`def`) written at an example group's level becomes an
+      # instance method on the group's example class, so it is checked the same
+      # way.
       # Dynamic references count as usages too: a call to `send`, `public_send`,
       # `__send__`, `method` or `respond_to?` with a literal name (e.g.
-      # `send(:foo)`) references the `let` it names.
+      # `send(:foo)`) references the `let` or method it names.
       #
       # Because RuboCop analyzes one file at a time, the cop stays silent
       # wherever it cannot see every possible reference: `let`s inside a
@@ -42,6 +46,25 @@ module RuboCop
       #   # good
       #   describe Foo do
       #     let(:used) { 1 }
+      #
+      #     it { expect(used).to eq(1) }
+      #   end
+      #
+      # @example a helper method
+      #   # bad
+      #   describe Foo do
+      #     def unused
+      #       1
+      #     end
+      #
+      #     it { expect(true).to be(true) }
+      #   end
+      #
+      #   # good
+      #   describe Foo do
+      #     def used
+      #       1
+      #     end
       #
       #     it { expect(used).to eq(1) }
       #   end
@@ -131,6 +154,8 @@ module RuboCop
 
         MSG = "`%<helper>s(:%<name>s)` is not referenced anywhere. " \
               "Remove it or reference it in an example."
+        DEF_MSG = "`def %<name>s` is not referenced anywhere. " \
+                  "Remove it or reference it in an example."
 
         # @rbs self.@external_definitions_cache: Hash[String, [ Time, SharedExampleRegistry::definition_mapping? ]]?
 
@@ -318,8 +343,14 @@ module RuboCop
         # @rbs name: Symbol
         def add_offense_for(let_node, helper, name) #: void
           node = let_node #: untyped
-          send_node = node.block_type? ? node.send_node : node
-          add_offense(send_node, message: format(MSG, helper: helper, name: name)) do |corrector|
+          if node.def_type?
+            highlight = node.loc.keyword.join(node.loc.name)
+            message = format(DEF_MSG, name: name)
+          else
+            highlight = node.block_type? ? node.send_node : node
+            message = format(MSG, helper: helper, name: name)
+          end
+          add_offense(highlight, message: message) do |corrector|
             corrector.remove(
               range_by_whole_lines(node.source_range, include_final_newline: true)
             )

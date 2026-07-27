@@ -89,6 +89,19 @@ module RuboCop
               helper, name = let_definition(let)
               scope.add_definition(helper, name.to_sym, let) if helper && name
             end
+            collect_method_definitions(node, scope)
+          end
+
+          # `def foo` at an example group's level becomes an instance method on
+          # the group's example class, so it is a definition just like a `let`.
+          #
+          # @rbs node: RuboCop::AST::Node
+          # @rbs scope: Scope
+          def collect_method_definitions(node, scope) #: void
+            method_definitions_in(node).each do |defn|
+              inner = defn #: untyped
+              scope.add_definition(:def, inner.method_name, defn)
+            end
           end
 
           # References in `node`'s region that sit *outside* its helper bodies
@@ -164,18 +177,28 @@ module RuboCop
           end
 
           # `def foo` written at an example group's level becomes an instance
-          # method on the group's example class. Skip `def`s nested inside a
-          # deeper example/shared group — those aren't visible from `node`.
+          # method on the group's example class. Skip `def`s that belong
+          # elsewhere: nested inside a deeper example/shared group (not visible
+          # from `node`), or inside a `class`/`module`/`def` written in the group
+          # (which define methods on that inner scope, not on the example class).
           #
           # @rbs node: RuboCop::AST::Node
           def method_definitions_in(node) #: Array[RuboCop::AST::Node]
-            node.each_descendant(:def).select do |defn|
-              inner = defn #: untyped
-              nearest = inner.each_ancestor(:block).find do |b|
-                b.equal?(node) || spec_group?(b)
-              end
-              nearest.equal?(node)
+            node.each_descendant(:def).select { own_level_method?(_1, node) }
+          end
+
+          # Whether `defn` defines an instance method on `group`'s example class:
+          # walking outward, `group` is reached before any nested spec group or
+          # inner definee scope (`class`/`module`/`def`/...) that would claim it.
+          #
+          # @rbs defn: RuboCop::AST::Node
+          # @rbs group: RuboCop::AST::Node
+          def own_level_method?(defn, group) #: bool
+            defn.each_ancestor do |ancestor|
+              return true if ancestor.equal?(group)
+              return false if spec_group?(ancestor) || definee_scope?(ancestor)
             end
+            false
           end
 
           # @rbs node: RuboCop::AST::Node
