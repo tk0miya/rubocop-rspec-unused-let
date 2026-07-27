@@ -258,6 +258,28 @@ end
   leave one alone that RSpec would in fact render dead — a `let` written before
   the inclusion, say.
 
+## Comparison with rspectre
+
+[rspectre](https://github.com/dgollahon/rspectre) also detects unused RSpec code,
+but it is a dynamic tool: it runs your test suite and observes usage at runtime.
+This gem instead performs **static analysis on a single file at a time (a RuboCop
+cop)**, so it is **lightweight and fast** — it never runs your tests — and drops
+straight into your existing RuboCop workflow.
+
+For unused `let` detection specifically, once `SharedExamplePaths` is set so the
+cop can resolve shared examples defined in other files, the two reach roughly the
+same precision. Being static, however, it is weaker than rspectre in a few cases:
+(1) `let`s **inside** a `shared_examples` / `shared_context` block are left
+unchecked (an including group may reference them, so they are conservatively
+skipped); (2) unused shared example/context definitions themselves are not
+detected at all; and (3) a `let` reached only through a dynamic reference such as
+`send(name)` or through a module mixed into the group is invisible statically, so
+it can be reported as a false positive. Those are exactly the cases runtime
+observation handles well, so rspectre is stronger there.
+Conversely, rspectre has to run the whole suite or it may report a shared example
+as unused when it is not, whereas this gem's results never depend on which tests
+you run.
+
 ## Development
 
 After checking out the repo, run `bin/setup` to install dependencies. Then run
