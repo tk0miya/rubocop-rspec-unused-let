@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+- `RSpec/UnusedLet` now also flags helper methods (`def`) written at an
+  example group's level whose name is never referenced. Such a method
+  becomes an instance method on the group's example class, so it is checked
+  with the same rules as a `let`, and autocorrect removes it.
 - `RSpec/UnusedLet` now resolves `shared_examples`/`shared_context`
   inclusions precisely instead of silencing every `let` in scope: it works
   out which `let`s the shared block actually references and treats only

@@ -472,6 +472,49 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           end
         end
 
+        context "when the shared block has a stub class defining the same name" do
+          it "still treats the name as a free reference of the block" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                class Dummy
+                  def name
+                    "other"
+                  end
+                end
+
+                it { expect(name).to eq("value") }
+              end
+
+              RSpec.describe Foo do
+                let(:name) { "value" }
+
+                it_behaves_like "a thing"
+              end
+            RUBY
+          end
+        end
+
+        context "when the block defines the name itself as a helper method" do
+          it "flags a same-named `let` the isolated `it_behaves_like` never uses" do
+            expect_offense(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                def name
+                  "own"
+                end
+
+                it { expect(name).to eq("own") }
+              end
+
+              RSpec.describe Foo do
+                let(:name) { "value" }
+                ^^^^^^^^^^ `let(:name)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it_behaves_like "a thing"
+              end
+            RUBY
+          end
+        end
+
         context "when the shared example is defined after the inclusion" do
           it "still resolves it" do
             expect_no_offenses(<<~RUBY)
@@ -801,6 +844,174 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
             end
           RUBY
         end
+      end
+    end
+  end
+
+  context "with helper methods" do
+    context "when unused" do
+      context "with a multi-line def" do
+        it "flags it and removes the definition" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              def unused
+              ^^^^^^^^^^ `def unused` is not referenced anywhere. Remove it or reference it in an example.
+                1
+              end
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+
+          expect_correction(<<~RUBY)
+            RSpec.describe Foo do
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+        end
+      end
+
+      context "with a one-line def" do
+        it "flags it and removes the definition", :ruby30 do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              def unused = 1
+              ^^^^^^^^^^ `def unused` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+
+          expect_correction(<<~RUBY)
+            RSpec.describe Foo do
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+        end
+      end
+    end
+
+    context "when referenced" do
+      context "when the reference is in an example" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              def value
+                1
+              end
+
+              it { expect(value).to eq(1) }
+            end
+          RUBY
+        end
+      end
+
+      context "when the reference is in a let block" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              def helper
+                1
+              end
+
+              let(:value) { helper }
+
+              it { expect(value).to eq(1) }
+            end
+          RUBY
+        end
+      end
+
+      context "when the reference is in a nested example group" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              def value
+                1
+              end
+
+              context "when nested" do
+                it { expect(value).to eq(1) }
+              end
+            end
+          RUBY
+        end
+      end
+
+      context "when the reference goes through send" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              def value
+                1
+              end
+
+              it { expect(send(:value)).to eq(1) }
+            end
+          RUBY
+        end
+      end
+    end
+
+    context "when defined inside a nested definee scope" do
+      context "with a stub class" do
+        it "does not treat its method as a group helper" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              class Dummy
+                def call
+                  1
+                end
+              end
+
+              it { expect(Dummy.new.call).to eq(1) }
+            end
+          RUBY
+        end
+      end
+
+      context "with a module" do
+        it "does not treat its method as a group helper" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              module Helpers
+                def call
+                  1
+                end
+              end
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+        end
+      end
+    end
+
+    context "when defined inside a shared example block" do
+      it "does not flag it" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.shared_examples "a thing" do
+            def helper
+              1
+            end
+          end
+        RUBY
+      end
+    end
+
+    context "with a helper spec" do
+      it "ignores it, which the auto-included module may reference" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe MyHelper, type: :helper do
+            def current_user
+              User.new
+            end
+
+            it { expect(helper.greeting).to eq("Hi") }
+          end
+        RUBY
       end
     end
   end

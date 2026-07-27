@@ -83,23 +83,44 @@ module RuboCop
           # @rbs node: RuboCop::AST::Node
           def build_definition(node) #: Definition
             definition = Definition.new(enclosing_group(node), node, Set.new, Set.new, [])
-            node.each_descendant(:send, :block) { classify(_1, definition) }
+            node.each_descendant(:send, :block, :def) { classify(_1, node, definition) }
             definition
           end
 
           # Sort one subtree node into the shared block's definitions,
-          # references or nested inclusions.
+          # references or nested inclusions. A `def` counts as a definition only
+          # when it sits at the shared block's own level; one nested in an inner
+          # `class`/`module`/`def` defines a method there, not on the block.
           #
           # @rbs child: RuboCop::AST::Node
+          # @rbs block_node: RuboCop::AST::Node
           # @rbs definition: Definition
-          def classify(child, definition) #: void
+          def classify(child, block_node, definition) #: void
             if (let = let_definition(child))
               definition.defs << let[1].to_sym
             elsif (name = subject_definition_name(child))
               definition.defs << name
+            elsif child.def_type?
+              def_node = child #: untyped
+              definition.defs << def_node.method_name if own_level_def?(child, block_node)
             elsif child.send_type?
               classify_send(child, definition)
             end
+          end
+
+          # Whether `defn` sits directly in `block_node`, with no inner definee
+          # scope (`class`/`module`/`def`/...) claiming it along the way. Nested
+          # example groups are not a boundary here: the block's whole subtree is
+          # gathered flat, as its `let`s and references are.
+          #
+          # @rbs defn: RuboCop::AST::Node
+          # @rbs block_node: RuboCop::AST::Node
+          def own_level_def?(defn, block_node) #: bool
+            defn.each_ancestor do |ancestor|
+              return true if ancestor.equal?(block_node)
+              return false if definee_scope?(ancestor)
+            end
+            false
           end
 
           # A bare send inside a shared block is either an inclusion of another

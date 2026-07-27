@@ -1,14 +1,14 @@
 # rubocop-rspec-unused-let
 
 A [RuboCop](https://github.com/rubocop/rubocop) extension that detects
-unreferenced RSpec `let` definitions.
+unreferenced RSpec `let` definitions and helper methods.
 
 It adds a single cop, `RSpec/UnusedLet`, which flags `let` (and optionally
-`let!`) definitions whose name is never referenced within their scope. The cop
-resolves `shared_examples` references precisely when it can see the shared
-block — in the same file, or in a file listed in `SharedExamplePaths` — and
-stays conservative otherwise, so that it avoids false positives that a naive
-implementation would produce.
+`let!`) definitions and helper methods (`def`) whose name is never referenced
+within their scope. The cop resolves `shared_examples` references precisely when
+it can see the shared block — in the same file, or in a file listed in
+`SharedExamplePaths` — and stays conservative otherwise, so that it avoids false
+positives that a naive implementation would produce.
 
 ## Installation
 
@@ -61,6 +61,33 @@ of these places:
 
 Any of these may instead be a dynamic dispatch with a literal name: `send`,
 `public_send`, `__send__`, `method` or `respond_to?`.
+
+### Helper methods
+
+A `def` written at an example group's level becomes an instance method on the
+group's example class, so it is checked with the same rules — flagged when
+nothing references its name, used when a `let`, hook, example, or another method
+calls it:
+
+```ruby
+# bad
+RSpec.describe Foo do
+  def unused # never referenced
+    1
+  end
+
+  it { expect(true).to be(true) }
+end
+
+# good
+RSpec.describe Foo do
+  def used
+    1
+  end
+
+  it { expect(used).to eq(1) }
+end
+```
 
 ## How it handles `shared_examples`
 

@@ -54,6 +54,13 @@ module RuboCop
           # @rbs scope: Scope
           def collect_definitions: (RuboCop::AST::Node node, Scope scope) -> void
 
+          # `def foo` at an example group's level becomes an instance method on
+          # the group's example class, so it is a definition just like a `let`.
+          #
+          # @rbs node: RuboCop::AST::Node
+          # @rbs scope: Scope
+          def collect_method_definitions: (RuboCop::AST::Node node, Scope scope) -> void
+
           # References in `node`'s region that sit *outside* its helper bodies
           # (examples and any other group-level code), collected into
           # `refs_in_example`. Stops at nested spec groups and skips the helper
@@ -98,11 +105,21 @@ module RuboCop
           def record_helper_references: (RuboCop::AST::Node node, Scope scope) -> void
 
           # `def foo` written at an example group's level becomes an instance
-          # method on the group's example class. Skip `def`s nested inside a
-          # deeper example/shared group — those aren't visible from `node`.
+          # method on the group's example class. Skip `def`s that belong
+          # elsewhere: nested inside a deeper example/shared group (not visible
+          # from `node`), or inside a `class`/`module`/`def` written in the group
+          # (which define methods on that inner scope, not on the example class).
           #
           # @rbs node: RuboCop::AST::Node
           def method_definitions_in: (RuboCop::AST::Node node) -> Array[RuboCop::AST::Node]
+
+          # Whether `defn` defines an instance method on `group`'s example class:
+          # walking outward, `group` is reached before any nested spec group or
+          # inner definee scope (`class`/`module`/`def`/...) that would claim it.
+          #
+          # @rbs defn: RuboCop::AST::Node
+          # @rbs group: RuboCop::AST::Node
+          def own_level_method?: (RuboCop::AST::Node defn, RuboCop::AST::Node group) -> bool
 
           # @rbs node: RuboCop::AST::Node
           def type_from_group: (RuboCop::AST::Node node) -> Symbol?
