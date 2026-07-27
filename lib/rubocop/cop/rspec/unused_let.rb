@@ -13,51 +13,22 @@ module RuboCop
       #
       # A `let` (or `let!`) whose name is never used within its scope is dead
       # code that makes specs harder to read. This cop flags such definitions.
+      # Dynamic references count as usages too: a call to `send`, `public_send`,
+      # `__send__`, `method` or `respond_to?` with a literal name (e.g.
+      # `send(:foo)`) references the `let` it names.
       #
-      # `let!` is checked as well by default. Since it is sometimes used purely
-      # for its side effects (e.g. `let!(:user) { create(:user) }`), you can opt
-      # out with `CheckLetBang: false`.
-      #
-      # To avoid false positives, the cop deliberately stays silent whenever it
-      # cannot see every possible reference:
-      #
-      # * `let` definitions inside a `shared_examples`/`shared_context` block are
-      #   ignored, because their consumers live in the (possibly external)
-      #   including example groups.
-      # * When an example group includes a shared example (`it_behaves_like`,
-      #   `include_examples`, `include_context`, ...) whose block is in reach,
-      #   only the `let`s that block actually references are treated as used;
-      #   the rest stay checked. A block is in reach when RSpec's scoping makes
-      #   a definition of the included name visible at that point, and the same
-      #   holds for whatever it includes in turn.
-      # * When it is not in reach (a dynamically named inclusion, or one whose
-      #   chain cannot be followed), every `let` visible there is ignored,
-      #   because the shared block may reference any of them. Point
-      #   `SharedExamplePaths` at the files that define your shared blocks
-      #   (usually the `spec/support` helpers) and the cop pre-loads their
-      #   top-level blocks, resolving those inclusions precisely instead of
-      #   falling back to this conservative case.
-      # * `let` definitions whose name is implicitly consumed by a well-known
-      #   gem's shared context (identified by the `type:` metadata on an
-      #   example group or one of its ancestors) are ignored. Currently this
-      #   covers {https://github.com/izumin5210/rspec-validator_spec_helper
-      #   rspec-validator_spec_helper}, whose `type: :validator` groups inject
-      #   a shared subject that dereferences `value`, `attribute_names`, and
-      #   `options` via `eval`.
-      # * Helper specs (rspec-rails `type: :helper` groups, or spec files under
-      #   `spec/helpers`) are skipped by default, because the described module
-      #   is auto-included into the example group and its (externally defined)
-      #   methods may reference any `let` in scope, invisibly to single-file
-      #   analysis. Set `CheckHelperSpecs: true` to check them anyway.
-      #
-      # How a `let` in the including group whose name the shared block also
-      # defines is treated depends on the inclusion, as shown below. That match
-      # is approximate: it can both leave a dead `let` unflagged and flag a
-      # live one.
-      #
-      # Dynamic references are treated as usages too: a call to `send`,
-      # `public_send`, `__send__`, `method` or `respond_to?` with a literal name
-      # (e.g. `send(:foo)`) references the `let` it names.
+      # Because RuboCop analyzes one file at a time, the cop stays silent
+      # wherever it cannot see every possible reference: `let`s inside a
+      # `shared_examples`/`shared_context` block, `let`s visible at an inclusion
+      # whose shared block it cannot find, `let`s a well-known gem's shared
+      # context consumes implicitly (recognized by the group's `type:`
+      # metadata), and helper specs. Where it can see the shared block, only the
+      # `let`s that block references are treated as used and the rest stay
+      # checked, so pointing `SharedExamplePaths` at the files defining your
+      # shared blocks (usually the `spec/support` helpers) buys precision for
+      # inclusions of them. See
+      # {https://github.com/tk0miya/rubocop-rspec-unused-let#readme the README}
+      # for the exact rules and their known limitations.
       #
       # @example
       #   # bad
@@ -198,11 +169,8 @@ module RuboCop
 
         # A group's `let`s know whether they were referenced once its whole
         # subtree has been entered, which is complete by the time it is left.
-        #
-        # A group nested inside a `shared_examples`/`shared_context` block is
-        # never reported: its `let`s may be consumed by the (possibly external)
-        # groups that include the shared block, exactly like `let`s written
-        # directly in the shared block.
+        # Nothing under a shared block is reported: those `let`s belong to
+        # whichever (possibly external) groups include it.
         #
         # @rbs node: RuboCop::AST::Node
         def after_block(node) #: void
@@ -219,11 +187,8 @@ module RuboCop
         attr_reader :stack #: Array[Scope]
         attr_reader :builder #: ScopeBuilder
 
-        # The external files' definition maps to hand the registry (typically
-        # the `spec/support` helpers), excluding the file under investigation so
-        # it is never indexed twice. They let the cop resolve inclusions of
-        # shared blocks defined outside this file precisely, instead of
-        # conservatively silencing every visible `let`.
+        # The `SharedExamplePaths` files' definition maps to hand the registry,
+        # excluding the file under investigation so it is never indexed twice.
         #
         # Globbing runs per investigation, so files added mid-run are picked up;
         # each file's definition map is cached (see {.external_definitions_cache}).
@@ -304,12 +269,10 @@ module RuboCop
           end
         end
 
-        # A helper spec (rspec-rails `type: :helper`, or a `spec/helpers/...`
-        # file location) auto-includes the described module into the example
-        # group, so any of its externally defined methods may reference any
-        # `let` in scope — invisible to single-file analysis. Unless the user
-        # opts in via `CheckHelperSpecs`, treat every definition in scope as
-        # referenced. This judgement is independent of shared inclusions.
+        # A helper spec's auto-included module lives in another file and may
+        # reference any `let` in scope, so every definition is treated as
+        # referenced unless `CheckHelperSpecs` opts in. This judgement is
+        # independent of shared inclusions.
         #
         # @rbs scope: Scope
         # @rbs ancestors: Array[Scope]
