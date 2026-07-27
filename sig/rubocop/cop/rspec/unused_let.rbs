@@ -22,9 +22,9 @@ module RuboCop
       # context consumes implicitly (recognized by the group's `type:`
       # metadata), and helper specs. Where it can see the shared block, only the
       # `let`s that block references are treated as used and the rest stay
-      # checked, so pointing `SharedExamplePaths` at the files defining your
-      # shared blocks (usually the `spec/support` helpers) buys precision for
-      # inclusions of them. See
+      # checked. `SharedExamplePaths` lists the files it pre-loads to see blocks
+      # defined elsewhere, and defaults to `spec/support/**/*.rb` — the glob
+      # rspec-rails offers for requiring support files. See
       # {https://github.com/tk0miya/rubocop-rspec-unused-let#readme the README}
       # for the exact rules and their known limitations.
       #
@@ -116,24 +116,6 @@ module RuboCop
       #     it { expect(helper.greeting).to eq("Hi") }
       #   end
       #
-      # @example SharedExamplePaths: [] (default)
-      #   # good - the shared block is defined in another file the cop does not
-      #   # read, so every `let` visible at the inclusion is left alone
-      #   describe Foo do
-      #     let(:unused) { 1 }
-      #
-      #     it_behaves_like "an external thing"
-      #   end
-      #
-      # @example SharedExamplePaths: ["spec/support/**/*.rb"]
-      #   # bad - the shared block is pre-loaded, so a `let` it never references
-      #   # is flagged as usual
-      #   describe Foo do
-      #     let(:unused) { 1 }
-      #
-      #     it_behaves_like "an external thing"
-      #   end
-      #
       # @safety
       #   Autocorrect deletes the flagged `let` definition. That is behaviorally
       #   safe for a plain `let`, whose block never runs when the helper is
@@ -150,16 +132,26 @@ module RuboCop
 
         DEF_MSG: ::String
 
-        self.@external_definitions_cache: Hash[String, [ Time, SharedExampleRegistry::definition_mapping? ]]?
+        type cache_key = [ Time, Integer ]
+
+        type cache_entry = [ cache_key, SharedExampleRegistry::definition_mapping? ]
+
+        self.@external_definitions_cache: Hash[String, cache_entry]?
 
         # Process-wide cache of the external files' definition maps, keyed by
-        # absolute path to `[mtime, definitions | nil]`. It lives on the class
-        # because RuboCop builds a fresh cop instance per inspected file, so a
-        # support file shared by many specs is scanned once for the whole run,
+        # absolute path to `[[mtime, size], definitions | nil]`. It lives on the
+        # class because RuboCop builds a fresh cop instance per inspected file,
+        # so a support file shared by many specs is scanned once per process,
         # not once per spec.
-        def self.external_definitions_cache: () -> Hash[String, [ Time, SharedExampleRegistry::definition_mapping? ]]
+        def self.external_definitions_cache: () -> Hash[String, cache_entry]
 
         def on_new_investigation: () -> void
+
+        # The pre-loaded files' digest for RuboCop's result-cache key, which
+        # otherwise covers no project file but the inspected one. `nil` when
+        # nothing is pre-loaded. Asked for once per configuration, so reading
+        # each file here is cheap.
+        def external_dependency_checksum: () -> String?
 
         # RuboCop visits nested groups on their own `on_block`, so we never
         # descend manually. On the way in the ancestors are exactly the scopes
@@ -186,10 +178,20 @@ module RuboCop
 
         # The `SharedExamplePaths` files' definition maps to hand the registry,
         # excluding the file under investigation so it is never indexed twice.
-        #
-        # Globbing runs per investigation, so files added mid-run are picked up;
-        # each file's definition map is cached (see {.external_definitions_cache}).
         def external_definitions: () -> Array[SharedExampleRegistry::definition_mapping]
+
+        # The absolute paths the `SharedExamplePaths` patterns expand to, in a
+        # stable order. Not cached on the class: a `--server` process outlives a
+        # run, so a cached expansion would go on ignoring later additions.
+        def external_paths: () -> Array[String]
+
+        # `path`'s identity for the result-cache digest. Content rather than
+        # mtime, which git does not preserve: keying on it would let a checkout
+        # discard a persisted cache wholesale. An unreadable path still gets a
+        # stable entry rather than breaking the run.
+        #
+        # @rbs path: String
+        def file_signature: (String path) -> String
 
         # The cached definition map for one external file, or `nil` when it
         # cannot be read or parsed — in which case the cop stays conservative

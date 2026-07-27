@@ -12,3 +12,6 @@ sources:
 
 # A directory to install the downloaded RBS files.
 path: .gem_rbs_collection
+
+gems:
+  - name: digest

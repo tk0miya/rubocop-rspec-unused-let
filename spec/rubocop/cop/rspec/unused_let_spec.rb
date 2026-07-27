@@ -1084,6 +1084,26 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
       end
     end
 
+    # The shipped default is such a pattern, so this is how it finds a project's
+    # own `spec/support`.
+    context "when a pattern is relative" do
+      let(:cop_config) { { "CheckLetBang" => true, "SharedExamplePaths" => ["*.rb"] } }
+
+      before { allow(config).to receive(:base_dir_for_path_parameters).and_return(support_dir) }
+
+      it "resolves it against the configuration's base directory" do
+        expect_offense(<<~RUBY)
+          RSpec.describe Foo do
+            let(:used) { 1 }
+            let(:unused) { 2 }
+            ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+            it_behaves_like "an external thing"
+          end
+        RUBY
+      end
+    end
+
     context "when the same file backs many investigations" do
       let(:cop_config) do
         {
@@ -1105,6 +1125,83 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         3.times { cop.send(:definitions_for, path) }
 
         expect(RuboCop::AST::ProcessedSource).to have_received(:from_file).once
+      end
+    end
+
+    context "when a pre-loaded file is rewritten under its old mtime" do
+      let(:cop_config) do
+        {
+          "CheckLetBang" => true,
+          "SharedExamplePaths" => [File.join(support_dir, "*.rb")]
+        }
+      end
+
+      around do |example|
+        described_class.external_definitions_cache.clear
+        example.run
+        described_class.external_definitions_cache.clear
+      end
+
+      it "notices the rewrite and re-parses it" do
+        path = File.expand_path(File.join(support_dir, "shared.rb"))
+        mtime = File.mtime(path)
+        cop.send(:definitions_for, path)
+        File.write(path, "#{File.read(path)}# a comment that makes the file longer\n")
+        File.utime(mtime, mtime, path)
+        expect(File.mtime(path)).to eq(mtime) # only the size gives the rewrite away
+        allow(RuboCop::AST::ProcessedSource).to receive(:from_file).and_call_original
+
+        cop.send(:definitions_for, path)
+
+        expect(RuboCop::AST::ProcessedSource).to have_received(:from_file).once
+      end
+    end
+
+    context "when RuboCop asks for the result-cache checksum" do
+      subject { cop.external_dependency_checksum }
+
+      let(:cop_config) do
+        {
+          "CheckLetBang" => true,
+          "SharedExamplePaths" => [File.join(support_dir, "*.rb")]
+        }
+      end
+
+      let(:baseline) { cop.external_dependency_checksum }
+      let(:shared_file) { File.join(support_dir, "shared.rb") }
+
+      before { baseline } # force the lazy baseline before each context edits a file
+
+      context "when a pre-loaded file's content changes" do
+        # Same byte count, so a size-based signature would miss this change.
+        before { File.write(shared_file, File.read(shared_file).sub("used", "usee")) }
+
+        it { is_expected.not_to eq(baseline) }
+      end
+
+      context "when only a pre-loaded file's mtime changes" do
+        before do
+          stamp = File.mtime(shared_file) + 1
+          File.utime(stamp, stamp, shared_file)
+        end
+
+        it { is_expected.to eq(baseline) }
+      end
+
+      context "when a pre-loaded path cannot be read" do
+        # A directory the pattern matches: globbed like a file, but unreadable.
+        before { Dir.mkdir(File.join(support_dir, "a_directory.rb")) }
+
+        it "still counts it in, with a stable entry" do
+          expect(subject).not_to eq(baseline)
+          expect(cop.external_dependency_checksum).to eq(subject)
+        end
+      end
+
+      context "when nothing is pre-loaded" do
+        let(:cop_config) { super().merge("SharedExamplePaths" => []) }
+
+        it { is_expected.to be_nil }
       end
     end
 
