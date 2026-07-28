@@ -98,9 +98,11 @@ can resolve it: the name is a literal, RSpec's scoping makes a definition of it
 visible at that point, and the same holds for whatever that block includes in
 turn. The cop is precise for those and conservative for the rest:
 
-- `let` definitions **inside** a `shared_examples` / `shared_context` block —
-  including any nested `context`/`describe` within it — are never flagged, since
-  the groups that include the block (possibly in other files) may reference them.
+- `let` definitions **inside** a `shared_examples` / `shared_context` block are
+  checked when the block carries examples, and left alone when it does not,
+  since a block with no examples exists to supply `let`s to the groups that
+  include it — possibly in other files (see below). `CheckSharedExamples: false`
+  leaves shared blocks alone entirely.
 - When the included block is in reach, only the `let`s it actually references
   are treated as used; every other `let` stays checked.
 - When it is not in reach, the cop cannot tell what it references, so it leaves
@@ -166,6 +168,44 @@ RSpec.describe Bar do
 end
 ```
 
+### Checking `let`s inside shared blocks
+
+The `let`s a shared block defines are checked when the block **carries
+examples**, and left alone when it does not:
+
+```ruby
+RSpec.shared_examples "a thing" do
+  let(:used) { 1 }
+  # flagged: the block runs its own examples, and none of them reference it
+  let(:unused) { 2 }
+
+  it { expect(used).to eq(1) }
+end
+
+RSpec.shared_context "with a thing" do
+  # not flagged: nothing here runs, so this `let` exists for whichever group
+  # includes the block
+  let(:provided) { 1 }
+end
+```
+
+A block with no examples is a *provider*: it is pulled in with
+`include_context`, which injects its `let`s into the including group so that
+group's examples can use them. A `let` that such a block never references is
+exactly what it is there for — and the groups that consume it usually live in
+other files, out of reach. A block that carries examples is meant to be run
+instead, so its `let`s are checked like any other group's.
+
+The distinction comes from the block's contents, not from the keyword that
+opened it: RSpec makes `shared_examples` and `shared_context` aliases, so the
+keyword is a convention rather than a guarantee. A nested `context`/`describe`
+inside a checked block is checked with it. A shared block nested inside another
+is checked only when both carry examples, so nothing inside an unchecked
+provider is reported.
+
+Set `CheckSharedExamples: false` to leave every shared block alone instead,
+whether it carries examples or not.
+
 ## Autocorrect
 
 The cop can remove flagged `let` definitions automatically, but the
@@ -205,6 +245,13 @@ RSpec/UnusedLet:
   # may reference any `let` in scope — invisibly to single-file analysis. Set
   # this to `true` to check them anyway, accepting the risk of false positives.
   CheckHelperSpecs: false
+
+  # Whether to check `let`s defined inside a `shared_examples` /
+  # `shared_context` block. On by default, though only blocks that carry
+  # examples are checked, since one without them is a provider whose `let`s
+  # exist for the including group — see "Checking `let`s inside shared blocks"
+  # above. Set this to `false` to leave shared blocks alone entirely.
+  CheckSharedExamples: true
 
   # Files defining shared examples/contexts, as paths or globs. Pre-loading them
   # lets the cop resolve inclusions of blocks defined there precisely instead of
@@ -266,6 +313,11 @@ end
   a `let` the shared block does use through a further inclusion of its own, and
   leave one alone that RSpec would in fact render dead — a `let` written before
   the inclusion, say.
+- A shared block that carries examples is judged on its own contents, inclusion
+  sites never being followed back to it — not even ones in the same file. A
+  `let` inside it that only an including group references is therefore flagged.
+  Erring the other way, a block whose examples are not spelled out — ones a
+  loop generates, say — counts as carrying none and stays unchecked.
 
 ## Comparison with rspectre
 
@@ -278,9 +330,9 @@ straight into your existing RuboCop workflow.
 For unused `let` detection specifically, the two reach roughly the same
 precision. Being static, however, it is weaker than rspectre in a few cases:
 
-- `let`s **inside** a `shared_examples` / `shared_context` block are left
-  unchecked — an including group may reference them, so they are conservatively
-  skipped.
+- `let`s **inside** a `shared_examples` / `shared_context` block that carries no
+  examples are left unchecked — an including group may reference them, so they
+  are conservatively skipped.
 - Unused shared example/context definitions themselves are not detected at all.
 - A `let` reached only through a dynamic reference such as `send(name)`, or
   through a module mixed into the group, is invisible statically, so it can be

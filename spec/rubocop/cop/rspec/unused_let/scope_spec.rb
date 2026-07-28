@@ -18,12 +18,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::Scope do
       it { is_expected.to contain_exactly([:let, :value, def_node]) }
     end
 
-    context "when the scope is a shared group" do
-      let(:scope) { build_scope(kind: :shared) }
-
-      it { is_expected.to be_empty }
-    end
-
     context "when the name has been marked referenced" do
       before { scope.mark_referenced(:value) }
 
@@ -50,19 +44,19 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::Scope do
     it { is_expected.to eq(%i[first second]) }
   end
 
-  describe "#example?" do
-    subject { scope.example? }
+  describe "#shared?" do
+    subject { scope.shared? }
 
     context "when the scope is an example group" do
       let(:scope) { build_scope }
 
-      it { is_expected.to be(true) }
+      it { is_expected.to be(false) }
     end
 
     context "when the scope is a shared group" do
       let(:scope) { build_scope(kind: :shared) }
 
-      it { is_expected.to be(false) }
+      it { is_expected.to be(true) }
     end
   end
 end

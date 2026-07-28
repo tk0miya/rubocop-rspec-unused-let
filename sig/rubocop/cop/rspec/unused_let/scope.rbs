@@ -6,8 +6,9 @@ module RuboCop
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
         # A mutable record of one example or shared group: the `let`s it defines,
         # the references it makes (kept apart by whether they sit in a helper
-        # body or in an example), whether it pulls in a shared example group, and
-        # which of its `let`s have been resolved to a reference.
+        # body or in an example), whether an example runs in it, whether it pulls
+        # in a shared example group, and which of its `let`s have been resolved
+        # to a reference.
         class Scope
           type kind = :example | :shared
 
@@ -30,7 +31,8 @@ module RuboCop
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
           # @rbs type: Symbol?
-          def initialize: (node: RuboCop::AST::Node, kind: kind, ?type: Symbol?) -> void
+          # @rbs carries_examples: bool
+          def initialize: (node: RuboCop::AST::Node, kind: kind, ?type: Symbol?, ?carries_examples: bool) -> void
 
           # @rbs helper: Symbol
           # @rbs name: Symbol
@@ -48,17 +50,19 @@ module RuboCop
           # @rbs name: Symbol
           def mark_referenced: (Symbol name) -> void
 
-          def example?: () -> bool
-
           def shared?: () -> bool
+
+          # Whether an example runs in this group or in an example group nested
+          # in it.
+          def carries_examples?: () -> bool
 
           def defined_names: () -> Array[Symbol]
 
-          # Shared groups never report — their `let`s may be consumed by external
-          # including groups.
           def unreferenced_defs: () -> Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
 
           private
+
+          attr_reader carries_examples: bool
 
           attr_writer inclusion: bool
         end
