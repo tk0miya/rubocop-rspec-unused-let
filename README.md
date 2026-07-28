@@ -7,8 +7,9 @@ It adds a single cop, `RSpec/UnusedLet`, which flags `let` (and optionally
 `let!`) definitions and helper methods (`def`) whose name is never referenced
 within their scope. The cop resolves `shared_examples` references precisely when
 it can see the shared block — in the same file, or in a file listed in
-`SharedExamplePaths` — and stays conservative otherwise, so that it avoids false
-positives that a naive implementation would produce.
+`SharedExamplePaths`, which covers `spec/support/**/*.rb` by default — and stays
+conservative otherwise, so that it avoids false positives that a naive
+implementation would produce.
 
 ## Installation
 
@@ -104,9 +105,8 @@ turn. The cop is precise for those and conservative for the rest:
   are treated as used; every other `let` stays checked.
 - When it is not in reach, the cop cannot tell what it references, so it leaves
   every `let` **visible at that inclusion point** alone. Sibling subtrees
-  without such an inclusion are still checked. To resolve blocks defined in
-  other files (e.g. under `spec/support`), list them in `SharedExamplePaths`
-  (see below).
+  without such an inclusion are still checked. A top-level block defined in
+  another file is in reach when that file is listed in `SharedExamplePaths`.
 - Whether a `let` in the **including** group with the *same name* as one in the
   shared block is checked depends on the inclusion: an inline one
   (`include_examples` / `include_context`) makes it the override, so it counts
@@ -136,7 +136,7 @@ RSpec.describe Foo do
 
   context "with shared" do
     let(:b) { 2 }            # skipped: same
-    it_behaves_like "an external thing"   # in another file, not pre-loaded
+    it_behaves_like "an external thing"   # in a file outside SharedExamplePaths
   end
 
   context "other" do
@@ -165,28 +165,6 @@ RSpec.describe Bar do
   let(:size) { 2 }   # flagged: the nested group uses its own `size`
 end
 ```
-
-### Resolving shared examples defined in other files
-
-Shared examples usually live under `spec/support` and are included from many
-spec files. List those files in `SharedExamplePaths` (paths or globs) and the
-cop pre-loads them, so an inclusion of a block defined there is resolved with
-the same precision as an in-file one, instead of the conservative fallback
-above.
-
-```yaml
-# .rubocop.yml
-RSpec/UnusedLet:
-  SharedExamplePaths:
-    - "spec/support/**/*.rb"
-```
-
-Paths resolve relative to the `.rubocop.yml` that sets them (as `Include` and
-`Exclude` do). A listed file that is missing or cannot be parsed is skipped, and
-when a name is defined both in a pre-loaded file and in the spec itself, the
-in-file definition wins (mirroring RSpec's load order).
-
-Only a pre-loaded file's top-level blocks are resolved.
 
 ## Autocorrect
 
@@ -228,11 +206,14 @@ RSpec/UnusedLet:
   # this to `true` to check them anyway, accepting the risk of false positives.
   CheckHelperSpecs: false
 
-  # Files defining shared examples/contexts, as paths or globs. Empty by
-  # default. Listing them lets the cop resolve inclusions of blocks defined in
-  # other files precisely instead of silencing every visible `let` — see
-  # "Resolving shared examples defined in other files" above.
-  SharedExamplePaths: []
+  # Files defining shared examples/contexts, as paths or globs. Pre-loading them
+  # lets the cop resolve inclusions of blocks defined there precisely instead of
+  # silencing every visible `let`. Relative patterns resolve against the
+  # `.rubocop.yml` in effect, as `Include` and `Exclude` do. Setting this key
+  # replaces the default rather than adding to it, so keep the default glob
+  # below if you still want those files.
+  SharedExamplePaths:
+    - "spec/support/**/*.rb"
 ```
 
 ## Known-gem support
@@ -275,7 +256,8 @@ end
 
 ## Known limitations
 
-- Analysis is limited to the file under inspection plus the files listed in
+- Analysis is limited to the file under inspection plus the top-level
+  `shared_examples`/`shared_context` blocks of the files listed in
   `SharedExamplePaths`. A `let` reached only from outside that range (a module
   mixed into the example group) or through a name that is not statically known
   (`send(attribute)`) can be a false positive. The cases the sections above

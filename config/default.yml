@@ -5,7 +5,8 @@ RSpec/UnusedLet:
   SafeAutoCorrect: false
   CheckLetBang: true
   CheckHelperSpecs: false
-  SharedExamplePaths: []
+  SharedExamplePaths:
+    - "spec/support/**/*.rb"
   Include:
     - "**/*_spec.rb"
     - "**/spec/**/*"

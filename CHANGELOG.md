@@ -8,10 +8,10 @@
   inclusions precisely instead of silencing every `let` in scope: it works
   out which `let`s the shared block actually references and treats only
   those as used, staying conservative for an inclusion it cannot resolve.
-  Blocks in the file under inspection are handled automatically; set
-  `SharedExamplePaths` (a list of paths or globs, e.g.
-  `spec/support/**/*.rb`; default `[]`) to also resolve the top-level
-  blocks of other files. Missing or unparseable listed files are skipped.
+  Blocks in the file under inspection are handled automatically;
+  `SharedExamplePaths` (a list of paths or globs) names the files whose
+  top-level blocks are also resolved. It defaults to `spec/support/**/*.rb`,
+  the glob rspec-rails offers for requiring support files.
 - `RSpec/UnusedLet` no longer flags a `let` that overrides one a shared
   block defines and uses, when that block is included inline with
   `include_examples` / `include_context`. Included with `it_behaves_like`,
