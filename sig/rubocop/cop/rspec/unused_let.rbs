@@ -3,14 +3,17 @@
 module RuboCop
   module Cop
     module RSpec
-      # Checks for `let` definitions and helper methods that are never
+      # Checks for `let`/`subject` definitions and helper methods that are never
       # referenced.
       #
       # A `let` (or `let!`) whose name is never used within its scope is dead
       # code that makes specs harder to read. This cop flags such definitions.
       # A helper method (`def`) written at an example group's level becomes an
       # instance method on the group's example class, so it is checked the same
-      # way.
+      # way. A `subject` (or `subject!`) is checked too: it answers both to its
+      # own name, when it has one, and to the implicit name `subject`, which
+      # `is_expected`, `are_expected`, `should`, `should_not` and rspec-its'
+      # `its` reach.
       # Dynamic references count as usages too: a call to `send`, `public_send`,
       # `__send__`, `method` or `respond_to?` with a literal name (e.g.
       # `send(:foo)`) references the `let` or method it names.
@@ -64,6 +67,28 @@ module RuboCop
       #     it { expect(used).to eq(1) }
       #   end
       #
+      # @example a subject
+      #   # bad
+      #   describe Foo do
+      #     subject { described_class.new }
+      #
+      #     it { expect(Foo.count).to eq(0) }
+      #   end
+      #
+      #   # good - the one-liner syntax references the subject
+      #   describe Foo do
+      #     subject { described_class.new }
+      #
+      #     it { is_expected.to be_valid }
+      #   end
+      #
+      #   # good - a named subject may be referenced by either name
+      #   describe Foo do
+      #     subject(:widget) { described_class.new }
+      #
+      #     it { expect(widget).to be_valid }
+      #   end
+      #
       # @example a same-named `let` in the including group
       #   RSpec.shared_examples "uses size" do
       #     let(:size) { 1 }
@@ -85,7 +110,7 @@ module RuboCop
       #   end
       #
       # @example CheckLetBang: true (default)
-      #   # bad
+      #   # bad - applies to `subject!` as well as `let!`
       #   describe Foo do
       #     let!(:widget) { create(:widget) }
       #
@@ -98,6 +123,22 @@ module RuboCop
       #     let!(:widget) { create(:widget) }
       #
       #     it { expect(Widget.count).to eq(1) }
+      #   end
+      #
+      # @example CheckSubject: true (default)
+      #   # bad
+      #   describe Foo do
+      #     subject(:widget) { described_class.new }
+      #
+      #     it { expect(Foo.count).to eq(0) }
+      #   end
+      #
+      # @example CheckSubject: false
+      #   # good - a `subject` is left alone even when nothing references it
+      #   describe Foo do
+      #     subject(:widget) { described_class.new }
+      #
+      #     it { expect(Foo.count).to eq(0) }
       #   end
       #
       # @example CheckHelperSpecs: false (default)
@@ -142,17 +183,17 @@ module RuboCop
       #   end
       #
       # @safety
-      #   Autocorrect deletes the flagged `let` definition. That is behaviorally
-      #   safe for a plain `let`, whose block never runs when the helper is
-      #   unreferenced, but a `let!` block is executed eagerly and may exist
-      #   purely for its side effects. RuboCop treats autocorrect safety as a
-      #   whole-cop setting, so the cop is marked unsafe and both `let` and
-      #   `let!` are only removed under `rubocop --autocorrect-all`.
+      #   Autocorrect deletes the flagged definition. That is behaviorally safe
+      #   for a plain `let` or `subject`, whose block never runs when the helper
+      #   is unreferenced, but a `let!`/`subject!` block is executed eagerly and
+      #   may exist purely for its side effects. RuboCop treats autocorrect
+      #   safety as a whole-cop setting, so the cop is marked unsafe and every
+      #   flagged definition is only removed under `rubocop --autocorrect-all`.
       #
       #   Inside a shared block that carries examples the cop never follows an
-      #   inclusion site back to the block, so a `let` only an including group
-      #   references is removed. Set `CheckSharedExamples: false` to leave shared
-      #   blocks alone.
+      #   inclusion site back to the block, so a definition only an including
+      #   group references is removed. Set `CheckSharedExamples: false` to leave
+      #   shared blocks alone.
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
         extend AutoCorrector
 
@@ -162,12 +203,16 @@ module RuboCop
 
         DEF_MSG: ::String
 
+        ANONYMOUS_SUBJECT_MSG: ::String
+
         # Inside a shared block the claim has to be narrower: a group including
         # the block from a file the cop never reads could still reference the
         # name, so the finding is scoped to what this block can be seen to do.
         MSG_IN_SHARED_GROUP: ::String
 
         DEF_MSG_IN_SHARED_GROUP: ::String
+
+        ANONYMOUS_SUBJECT_MSG_IN_SHARED_GROUP: ::String
 
         type cache_key = [ Time, Integer ]
 
@@ -301,11 +346,13 @@ module RuboCop
         # @rbs in_shared_group: bool
         def report: (Scope scope, in_shared_group: bool) -> void
 
-        # @rbs let_node: RuboCop::AST::Node
-        # @rbs helper: Symbol
-        # @rbs name: Symbol
+        # @rbs definition: Scope::Definition
         # @rbs in_shared_group: bool
-        def add_offense_for: (RuboCop::AST::Node let_node, Symbol helper, Symbol name, in_shared_group: bool) -> void
+        def add_offense_for: (Scope::Definition definition, in_shared_group: bool) -> void
+
+        # @rbs definition: Scope::Definition
+        # @rbs in_shared_group: bool
+        def message_for: (Scope::Definition definition, in_shared_group: bool) -> String
       end
     end
   end

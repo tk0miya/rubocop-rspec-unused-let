@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+- `RSpec/UnusedLet` now also flags `subject`/`subject!` definitions that
+  nothing references. A subject answers to two names: its own, when it has
+  one, and the implicit `subject`, which RSpec's one-liner syntax
+  (`is_expected`, `are_expected`, `should`, `should_not`) and rspec-its' `its`
+  reach. A reference by either name counts, in a shared example block as much
+  as in an example group. `CheckLetBang` governs `subject!` alongside `let!`,
+  and setting the new `CheckSubject` (default `true`) to `false` turns the
+  check off entirely.
 - `RSpec/UnusedLet` now also flags helper methods (`def`) written at an
   example group's level whose name is never referenced. Such a method
   becomes an instance method on the group's example class, so it is checked

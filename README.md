@@ -1,15 +1,15 @@
 # rubocop-rspec-unused-let
 
 A [RuboCop](https://github.com/rubocop/rubocop) extension that detects
-unreferenced RSpec `let` definitions and helper methods.
+unreferenced RSpec `let`/`subject` definitions and helper methods.
 
 It adds a single cop, `RSpec/UnusedLet`, which flags `let` (and optionally
-`let!`) definitions and helper methods (`def`) whose name is never referenced
-within their scope. The cop resolves `shared_examples` references precisely when
-it can see the shared block — in the same file, or in a file listed in
-`SharedExamplePaths`, which covers `spec/support/**/*.rb` by default — and stays
-conservative otherwise, so that it avoids false positives that a naive
-implementation would produce.
+`let!`) definitions, `subject` definitions and helper methods (`def`) whose name
+is never referenced within their scope. The cop resolves `shared_examples`
+references precisely when it can see the shared block — in the same file, or in a
+file listed in `SharedExamplePaths`, which covers `spec/support/**/*.rb` by
+default — and stays conservative otherwise, so that it avoids false positives
+that a naive implementation would produce.
 
 ## Installation
 
@@ -90,6 +90,40 @@ RSpec.describe Foo do
 end
 ```
 
+### Subjects
+
+A `subject` (or `subject!`) is checked with the same rules, with one addition:
+besides its own name, if it has one, it answers to the implicit name `subject`.
+So a reference is any of `subject`, RSpec's one-liner syntax (`is_expected`,
+`are_expected`, `should`, `should_not`), rspec-its' `its`, or — for a named
+subject — its declared name:
+
+```ruby
+# bad
+RSpec.describe Foo do
+  subject { described_class.new } # never referenced
+
+  it { expect(Foo.count).to eq(0) }
+end
+
+# good
+RSpec.describe Foo do
+  subject { described_class.new }
+
+  it { is_expected.to be_valid }
+end
+
+# good - either name reaches a named subject
+RSpec.describe Foo do
+  subject(:widget) { described_class.new }
+
+  it { expect(widget).to be_valid }
+end
+```
+
+Set `CheckSubject: false` to leave `subject` definitions alone entirely, for
+instance if you write them as documentation of what a group is about.
+
 ## How it handles `shared_examples`
 
 Because RuboCop analyzes one file at a time, a `let` can be consumed by a shared
@@ -115,6 +149,14 @@ turn. The cop is precise for those and conservative for the rest:
   as used when the block references the name; a nested one (`it_behaves_like` /
   `it_should_behave_like`) does not. The match is approximate; see Known
   limitations.
+
+All of this applies to `subject` definitions and helper methods just as it does
+to `let`s. A shared block written as `it { is_expected.to be_valid }` references
+the implicit name `subject`, so a `subject` visible at an inclusion of it counts
+as used — unless the block declares a `subject` at its own level, in which case
+it consumes no subject from the including group. One declared in a nested
+`context` of the block shadows it only there, and is not read as the block
+bringing its own.
 
 ```ruby
 RSpec.shared_examples "uses a" do
@@ -208,10 +250,10 @@ whether it carries examples or not.
 
 ## Autocorrect
 
-The cop can remove flagged `let` definitions automatically, but the
-correction is marked **unsafe** because a `let!` block may exist for its
-side effects. Run `rubocop --autocorrect-all` (or `-A`) to apply the
-corrections, and review the diff before committing.
+The cop can remove flagged definitions automatically, but the correction is
+marked **unsafe** because a `let!`/`subject!` block may exist for its side
+effects. Run `rubocop --autocorrect-all` (or `-A`) to apply the corrections,
+and review the diff before committing.
 
 ```ruby
 # before -A
@@ -234,10 +276,15 @@ end
 
 ```yaml
 RSpec/UnusedLet:
-  # Whether to also check `let!`. On by default. Since `let!` is sometimes used
-  # purely for its side effects (e.g. `let!(:user) { create(:user) }`), set this
-  # to `false` to opt out.
+  # Whether to also check `let!` and `subject!`. On by default. Since a bang
+  # helper is sometimes used purely for its side effects (e.g.
+  # `let!(:user) { create(:user) }`), set this to `false` to opt out.
   CheckLetBang: true
+
+  # Whether to check `subject`/`subject!` definitions. On by default. Set this
+  # to `false` if you write a `subject` as documentation of what a group is
+  # about and do not want an unreferenced one flagged.
+  CheckSubject: true
 
   # Whether to check helper specs. Off by default. A helper spec (rspec-rails
   # `type: :helper`, or a spec file under `spec/helpers`) auto-includes the
@@ -318,6 +365,10 @@ end
   `let` inside it that only an including group references is therefore flagged.
   Erring the other way, a block whose examples are not spelled out — ones a
   loop generates, say — counts as carrying none and stays unchecked.
+- A `subject` shadowed by one in a nested group is left alone whenever that
+  nested group references the implicit `subject`, since both definitions answer
+  to the same name. The outer one may in fact be dead, so this errs toward a
+  false negative rather than a false positive.
 
 ## Comparison with rspectre
 
@@ -327,8 +378,8 @@ This gem instead performs **static analysis on a single file at a time (a RuboCo
 cop)**, so it is **lightweight and fast** — it never runs your tests — and drops
 straight into your existing RuboCop workflow.
 
-For unused `let` detection specifically, the two reach roughly the same
-precision. Being static, however, it is weaker than rspectre in a few cases:
+For unused `let`/`subject` detection specifically, the two reach roughly the
+same precision. Being static, however, it is weaker than rspectre in a few cases:
 
 - `let`s **inside** a `shared_examples` / `shared_context` block that carries no
   examples are left unchecked — an including group may reference them, so they

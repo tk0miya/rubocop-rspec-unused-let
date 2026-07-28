@@ -88,25 +88,53 @@ module RuboCop
           end
 
           # Sort one subtree node into the shared block's definitions,
-          # references or nested inclusions. A `def` counts as a definition only
-          # when it sits at the shared block's own level; one nested in an inner
-          # definee scope (see {Matchers#definee_scope?}) defines a method
-          # there, not on the block.
+          # references or nested inclusions. A node that defines nothing
+          # contributes a reference or an inclusion only when it is a bare
+          # `send`.
           #
           # @rbs child: RuboCop::AST::Node
           # @rbs block_node: RuboCop::AST::Node
           # @rbs definition: Definition
           def classify(child, block_node, definition) #: void
-            if (let = let_definition(child))
-              definition.defs << let[1].to_sym
-            elsif (name = subject_definition_name(child))
-              definition.defs << name
-            elsif child.def_type?
-              def_node = child #: untyped
-              definition.defs << def_node.method_name if own_level_def?(child, block_node)
-            elsif child.send_type?
+            names = defined_names(child, block_node)
+            if names.any?
+              definition.defs.merge(names)
+            elsif child.send_type? && !subject_definition_head?(child)
               classify_send(child, definition)
             end
+          end
+
+          # The names `child` defines on the shared block, empty when it defines
+          # none. Two of them are conditional, on different grounds: a `def`
+          # helper's name counts only outside an inner definee scope (see
+          # {#own_level_def?}), the implicit `subject` only outside a nested
+          # group (see {#implicit_subject_name}).
+          #
+          # @rbs child: RuboCop::AST::Node
+          # @rbs block_node: RuboCop::AST::Node
+          def defined_names(child, block_node) #: Array[Symbol]
+            if (let = let_definition(child))
+              [let[1].to_sym]
+            elsif (subject = subject_definition(child))
+              [subject[1], implicit_subject_name(child, block_node)].compact
+            elsif child.def_type? && own_level_def?(child, block_node)
+              def_node = child #: untyped
+              [def_node.method_name]
+            else
+              []
+            end
+          end
+
+          # `:subject` when the subject at `child` is the block's own, `nil` when
+          # a nested `context` holds it. Every group has a subject, so a nested
+          # one shadows the block's own only there; taken flat it would cancel
+          # the `subject` reference an example at the block's level makes, and
+          # the including group's subject would look unreferenced.
+          #
+          # @rbs child: RuboCop::AST::Node
+          # @rbs block_node: RuboCop::AST::Node
+          def implicit_subject_name(child, block_node) #: Symbol?
+            :subject if block_node.equal?(enclosing_group(child))
           end
 
           # Whether `defn` sits directly in `block_node`, with no inner definee

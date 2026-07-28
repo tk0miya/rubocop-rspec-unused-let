@@ -10,6 +10,14 @@ module RuboCop
         module References
           DYNAMIC_DISPATCH_METHODS: untyped
 
+          # Calls that reach the group's `subject` without naming it: RSpec's
+          # one-liner syntax (`is_expected`, `should`, `should_not`, and
+          # rspec-collection_matchers' plural `are_expected`) and rspec-its
+          # (`its(:size) { ... }`, which derives from the subject). Normalizing
+          # them here is what lets a `subject` be resolved by the same machinery
+          # as a `let`, in a shared block as much as in a group.
+          SUBJECT_ALIASES: untyped
+
           # A bare (nil receiver) call names a `let`; a dynamic-dispatch call
           # such as `send(:foo)` names its literal first argument.
           #

@@ -4,19 +4,46 @@ module RuboCop
   module Cop
     module RSpec
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
-        # A mutable record of one example or shared group: the `let`s it defines,
-        # the references it makes (kept apart by whether they sit in a helper
-        # body or in an example), whether an example runs in it, whether it pulls
-        # in a shared example group, and which of its `let`s have been resolved
-        # to a reference.
+        # A mutable record of one example or shared group: the definitions it
+        # makes, the references it makes (kept apart by whether they sit in a
+        # helper body or in an example), whether an example runs in it, whether
+        # it pulls in a shared example group, and which of its definitions have
+        # been resolved to a reference.
         class Scope
           type kind = :example | :shared
+
+          # One definition a group makes: a `let`/`let!`, a `subject`/`subject!`
+          # or a `def` helper method.
+          class Definition < Struct[Symbol | Symbol? | Array[Symbol] | RuboCop::AST::Node]
+            attr_accessor helper(): Symbol
+
+            attr_accessor name(): Symbol?
+
+            attr_accessor names(): Array[Symbol]
+
+            attr_accessor node(): RuboCop::AST::Node
+
+            def self.new: (?Symbol helper, ?Symbol? name, ?Array[Symbol] names, ?RuboCop::AST::Node node) -> instance
+                        | (?helper: Symbol, ?name: Symbol?, ?names: Array[Symbol], ?node: RuboCop::AST::Node) -> instance
+          end
+
+          # Reopened rather than given a `Struct.new` block, whose body
+          # `rbs-inline` does not read.
+          class Definition
+            def subject?: () -> bool
+
+            def bang?: () -> bool
+
+            def def_helper?: () -> bool
+
+            def anonymous?: () -> bool
+          end
 
           attr_reader node: RuboCop::AST::Node
 
           attr_reader kind: kind
 
-          attr_reader defs: Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
+          attr_reader defs: Array[Definition]
 
           attr_reader refs: Set[Symbol]
 
@@ -35,9 +62,10 @@ module RuboCop
           def initialize: (node: RuboCop::AST::Node, kind: kind, ?type: Symbol?, ?carries_examples: bool) -> void
 
           # @rbs helper: Symbol
-          # @rbs name: Symbol
+          # @rbs name: Symbol?
           # @rbs def_node: RuboCop::AST::Node
-          def add_definition: (Symbol helper, Symbol name, RuboCop::AST::Node def_node) -> void
+          # @rbs alias_name: Symbol?
+          def add_definition: (Symbol helper, Symbol? name, RuboCop::AST::Node def_node, ?alias_name: Symbol?) -> void
 
           # @rbs name: Symbol
           def add_reference: (Symbol name) -> void
@@ -58,7 +86,7 @@ module RuboCop
 
           def defined_names: () -> Array[Symbol]
 
-          def unreferenced_defs: () -> Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
+          def unreferenced_defs: () -> Array[Definition]
 
           private
 

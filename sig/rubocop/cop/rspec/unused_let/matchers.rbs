@@ -4,9 +4,9 @@ module RuboCop
   module Cop
     module RSpec
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
-        # The RSpec node-pattern matchers this cop uses to recognize AST nodes:
-        # example/shared groups, `let`/`subject` definitions, and shared-example
-        # inclusions.
+        # The RSpec vocabulary this cop works from, and the node-pattern
+        # matchers that recognize it in an AST: example/shared groups,
+        # `let`/`subject` definitions, and shared-example inclusions.
         module Matchers
           include ::RuboCop::RSpec::Language
 
@@ -14,6 +14,13 @@ module RuboCop
 
           # Node types that open a new method-definition scope by keyword.
           DEFINEE_SCOPE_TYPES: untyped
+
+          # The helpers that declare a subject.
+          SUBJECT_HELPERS: untyped
+
+          # The helpers whose block runs eagerly, so it may exist for its side
+          # effects alone.
+          BANG_HELPERS: untyped
 
           # Whether `node` opens a method-definition scope (a new
           # `self`/definee) of its own, by keyword or as a block: a `def`
@@ -35,13 +42,33 @@ module RuboCop
 
           def let_definition: (RuboCop::AST::Node node) -> [ Symbol, Symbol | String ]?
 
-          def subject_definition_name: (RuboCop::AST::Node node) -> Symbol?
+          def named_subject_definition: (RuboCop::AST::Node node) -> [ Symbol, Symbol | String ]?
+
+          def anonymous_subject_definition: (RuboCop::AST::Node node) -> Symbol?
 
           def inclusion_call?: (RuboCop::AST::Node node) -> bool
 
           def inclusion_name: (RuboCop::AST::Node node) -> (Symbol | String)?
 
           def nested_inclusion?: (RuboCop::AST::Node node) -> bool
+
+          # `[helper, name]` for a subject definition, with `name` `nil` for an
+          # anonymous `subject { }`; `nil` when the node defines no subject.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def subject_definition: (RuboCop::AST::Node node) -> [ Symbol, Symbol? ]?
+
+          # Whether `node` is the `subject`/`subject!` call declaring a subject:
+          # it heads a block of any kind, or takes one as an argument. Such a
+          # call names the subject it declares, not one defined further out, so
+          # it must not be read as a reference the way a bare `subject` call is.
+          #
+          # Deliberately wider than {#subject_definition}, which recognizes only
+          # the form rubocop-rspec collects as a definition: a declaration the
+          # cop cannot check should not silence a subject elsewhere either.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def subject_definition_head?: (RuboCop::AST::Node node) -> bool
 
           # An *inline* inclusion (`include_examples`/`include_context`) injects
           # the shared block's definitions into the current context, where a

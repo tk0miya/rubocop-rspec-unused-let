@@ -6,7 +6,9 @@ require "tmpdir"
 RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
   include_context "with default RSpec/Language config"
 
-  let(:cop_config) { { "CheckLetBang" => true, "CheckSharedExamples" => true } }
+  let(:cop_config) do
+    { "CheckLetBang" => true, "CheckSubject" => true, "CheckSharedExamples" => true }
+  end
 
   context "with let" do
     context "when unused" do
@@ -126,6 +128,22 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
                 let(:inner) { 1 }
 
                 it { expect(wrapper).to eq([1]) }
+              end
+            end
+          RUBY
+        end
+      end
+
+      context "when the reference is in an ancestor subject block" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new(inner) }
+
+              context "when nested" do
+                let(:inner) { 1 }
+
+                it { is_expected.to be_valid }
               end
             end
           RUBY
@@ -422,7 +440,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
       end
 
       context "when CheckHelperSpecs is enabled" do
-        let(:cop_config) { { "CheckLetBang" => true, "CheckHelperSpecs" => true } }
+        let(:cop_config) { super().merge("CheckHelperSpecs" => true) }
 
         context "with `type: :helper` metadata" do
           it "flags an unused let" do
@@ -1077,12 +1095,479 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
       end
 
       context "when CheckLetBang is disabled" do
-        let(:cop_config) { { "CheckLetBang" => false } }
+        let(:cop_config) { super().merge("CheckLetBang" => false) }
 
         it "does not flag it" do
           expect_no_offenses(<<~RUBY)
             RSpec.describe Foo do
               let!(:widget) { create(:widget) }
+
+              it { expect(Widget.count).to eq(1) }
+            end
+          RUBY
+        end
+      end
+    end
+  end
+
+  context "with subject" do
+    context "when unused" do
+      context "when CheckSubject is enabled (default)" do
+        context "with an anonymous subject" do
+          it "flags it and removes the definition" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                subject { described_class.new }
+                ^^^^^^^ `subject` is not referenced anywhere. Remove it or reference it in an example.
+
+                it { expect(Foo.count).to eq(0) }
+              end
+            RUBY
+
+            expect_correction(<<~RUBY)
+              RSpec.describe Foo do
+
+                it { expect(Foo.count).to eq(0) }
+              end
+            RUBY
+          end
+        end
+
+        context "with a named subject" do
+          it "flags it and removes the definition" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                subject(:widget) { described_class.new }
+                ^^^^^^^^^^^^^^^^ `subject(:widget)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it { expect(Foo.count).to eq(0) }
+              end
+            RUBY
+
+            expect_correction(<<~RUBY)
+              RSpec.describe Foo do
+
+                it { expect(Foo.count).to eq(0) }
+              end
+            RUBY
+          end
+        end
+
+        context "when only a same-named `let` is referenced elsewhere" do
+          it "flags the subject in the group that never uses it" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                context "one" do
+                  subject(:widget) { described_class.new }
+                  ^^^^^^^^^^^^^^^^ `subject(:widget)` is not referenced anywhere. Remove it or reference it in an example.
+
+                  it { expect(Foo.count).to eq(0) }
+                end
+
+                context "two" do
+                  let(:widget) { described_class.new }
+
+                  it { expect(widget).to be_a(Foo) }
+                end
+              end
+            RUBY
+          end
+        end
+      end
+
+      context "when CheckSubject is disabled" do
+        let(:cop_config) { super().merge("CheckSubject" => false) }
+
+        it "does not flag it, but still flags a `let`" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              subject(:widget) { described_class.new }
+              let(:unused) { 1 }
+              ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { expect(Foo.count).to eq(0) }
+            end
+          RUBY
+        end
+      end
+    end
+
+    context "when referenced" do
+      context "with the one-liner `is_expected`" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new }
+
+              it { is_expected.to be_valid }
+            end
+          RUBY
+        end
+      end
+
+      context "with a bare `subject` call in an example" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new }
+
+              it { expect(subject).to be_valid }
+            end
+          RUBY
+        end
+      end
+
+      context "with a `subject` call in a hook" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject(:widget) { create(:widget) }
+
+              before { subject }
+
+              it { expect(Widget.count).to eq(1) }
+            end
+          RUBY
+        end
+      end
+
+      context "with a named subject referenced by its own name" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject(:widget) { described_class.new }
+
+              it { expect(widget).to be_valid }
+            end
+          RUBY
+        end
+      end
+
+      context "with a named subject reached only through `is_expected`" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject(:widget) { described_class.new }
+
+              it { is_expected.to be_valid }
+            end
+          RUBY
+        end
+      end
+
+      context "with the reference in a nested group" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new }
+
+              context "nested" do
+                it { is_expected.to be_valid }
+              end
+            end
+          RUBY
+        end
+      end
+
+      context "with the reference in a `let` body" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new }
+
+              let(:wrapper) { Wrapper.new(subject) }
+
+              it { expect(wrapper).to be_valid }
+            end
+          RUBY
+        end
+      end
+    end
+
+    context "when a nested group declares its own subject" do
+      context "with a block" do
+        it "does not flag the outer one, both answering to the same name" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new }
+
+              context "nested" do
+                subject { described_class.new(1) }
+
+                it { is_expected.to be_valid }
+              end
+            end
+          RUBY
+        end
+      end
+
+      context "with a block argument" do
+        it "flags the outer one, the declaration being no reference to it" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new }
+              ^^^^^^^ `subject` is not referenced anywhere. Remove it or reference it in an example.
+
+              context "nested" do
+                subject(:widget, &:itself)
+
+                it { expect(Foo.count).to eq(0) }
+              end
+            end
+          RUBY
+        end
+      end
+
+      context "with a numbered block" do
+        it "flags the outer one, the declaration being no reference to it" do
+          expect_offense(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new }
+              ^^^^^^^ `subject` is not referenced anywhere. Remove it or reference it in an example.
+
+              context "nested" do
+                subject { _1 }
+
+                it { expect(Foo.count).to eq(0) }
+              end
+            end
+          RUBY
+        end
+      end
+    end
+
+    context "when the spec has a shared example inclusion" do
+      context "when the shared block uses the one-liner syntax" do
+        it "does not flag the subject it consumes" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.shared_examples "a valid thing" do
+              it { is_expected.to be_valid }
+            end
+
+            RSpec.describe Foo do
+              subject { described_class.new }
+
+              it_behaves_like "a valid thing"
+            end
+          RUBY
+        end
+      end
+
+      context "when the shared block references no subject" do
+        it "flags the subject" do
+          expect_offense(<<~RUBY)
+            RSpec.shared_examples "a counted thing" do
+              it { expect(Foo.count).to eq(0) }
+            end
+
+            RSpec.describe Foo do
+              subject { described_class.new }
+              ^^^^^^^ `subject` is not referenced anywhere. Remove it or reference it in an example.
+
+              it_behaves_like "a counted thing"
+            end
+          RUBY
+        end
+      end
+
+      context "when the shared block declares its own subject" do
+        it "flags the subject of a nested inclusion's including group" do
+          expect_offense(<<~RUBY)
+            RSpec.shared_examples "a valid thing" do
+              subject { described_class.new }
+
+              it { is_expected.to be_valid }
+            end
+
+            RSpec.describe Foo do
+              subject { described_class.new(1) }
+              ^^^^^^^ `subject` is not referenced anywhere. Remove it or reference it in an example.
+
+              it_behaves_like "a valid thing"
+            end
+          RUBY
+        end
+      end
+
+      context "when an inline inclusion's block declares and uses a subject" do
+        it "does not flag the overriding subject" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.shared_examples "a valid thing" do
+              subject { described_class.new }
+
+              it { is_expected.to be_valid }
+            end
+
+            RSpec.describe Foo do
+              include_examples "a valid thing"
+
+              subject { described_class.new(1) }
+            end
+          RUBY
+        end
+      end
+
+      context "when only a nested context of the shared block declares a subject" do
+        it "does not flag the subject the block's own level uses" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.shared_examples "a validatable thing" do
+              it { is_expected.to be_valid }
+
+              context "when blank" do
+                subject { described_class.new(nil) }
+
+                it { is_expected.not_to be_valid }
+              end
+            end
+
+            RSpec.describe Foo do
+              subject { described_class.new }
+
+              it_behaves_like "a validatable thing"
+            end
+          RUBY
+        end
+      end
+
+      context "when an inline inclusion's block declares a subject it never uses" do
+        it "flags the overriding subject" do
+          expect_offense(<<~RUBY)
+            RSpec.shared_context "with a thing" do
+              subject { described_class.new }
+            end
+
+            RSpec.describe Foo do
+              include_context "with a thing"
+
+              subject { described_class.new(1) }
+              ^^^^^^^ `subject` is not referenced anywhere. Remove it or reference it in an example.
+            end
+          RUBY
+        end
+      end
+
+      context "when the inclusion cannot be resolved" do
+        it "does not flag the subject visible at it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new }
+
+              it_behaves_like "an external thing"
+            end
+          RUBY
+        end
+      end
+    end
+
+    context "when defined inside a shared example block" do
+      context "when CheckSharedExamples is enabled (default)" do
+        context "when the block carries examples" do
+          it "flags it" do
+            expect_offense(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                subject { described_class.new }
+                ^^^^^^^ `subject` is not referenced anywhere in this shared example group. Remove it or reference it in an example.
+
+                it { expect(Foo.count).to eq(0) }
+              end
+            RUBY
+          end
+        end
+
+        context "when the block carries no examples" do
+          it "leaves the provider's subject alone" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_context "with a thing" do
+                subject { described_class.new }
+              end
+            RUBY
+          end
+        end
+      end
+
+      context "when CheckSharedExamples is disabled" do
+        let(:cop_config) { super().merge("CheckSharedExamples" => false) }
+
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.shared_examples "a thing" do
+              subject { described_class.new }
+
+              it { expect(Foo.count).to eq(0) }
+            end
+          RUBY
+        end
+      end
+    end
+  end
+
+  context "with subject!" do
+    context "when unused" do
+      context "when CheckLetBang is enabled (default)" do
+        context "when CheckSubject is enabled (default)" do
+          context "with an anonymous subject" do
+            it "flags it and removes the definition" do
+              expect_offense(<<~RUBY)
+                RSpec.describe Foo do
+                  subject! { create(:widget) }
+                  ^^^^^^^^ `subject!` is not referenced anywhere. Remove it or reference it in an example.
+
+                  it { expect(Widget.count).to eq(1) }
+                end
+              RUBY
+
+              expect_correction(<<~RUBY)
+                RSpec.describe Foo do
+
+                  it { expect(Widget.count).to eq(1) }
+                end
+              RUBY
+            end
+          end
+
+          context "with a named subject" do
+            it "flags it and removes the definition" do
+              expect_offense(<<~RUBY)
+                RSpec.describe Foo do
+                  subject!(:widget) { create(:widget) }
+                  ^^^^^^^^^^^^^^^^^ `subject!(:widget)` is not referenced anywhere. Remove it or reference it in an example.
+
+                  it { expect(Widget.count).to eq(1) }
+                end
+              RUBY
+
+              expect_correction(<<~RUBY)
+                RSpec.describe Foo do
+
+                  it { expect(Widget.count).to eq(1) }
+                end
+              RUBY
+            end
+          end
+        end
+
+        context "when CheckSubject is disabled" do
+          let(:cop_config) { super().merge("CheckSubject" => false) }
+
+          it "does not flag it" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe Foo do
+                subject!(:widget) { create(:widget) }
+
+                it { expect(Widget.count).to eq(1) }
+              end
+            RUBY
+          end
+        end
+      end
+
+      context "when CheckLetBang is disabled" do
+        let(:cop_config) { super().merge("CheckLetBang" => false) }
+
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject!(:widget) { create(:widget) }
 
               it { expect(Widget.count).to eq(1) }
             end
@@ -1430,12 +1915,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     after { FileUtils.remove_entry(support_dir) }
 
     context "when SharedExamplePaths points at the file" do
-      let(:cop_config) do
-        {
-          "CheckLetBang" => true,
-          "SharedExamplePaths" => [File.join(support_dir, "*.rb")]
-        }
-      end
+      let(:cop_config) { super().merge("SharedExamplePaths" => [File.join(support_dir, "*.rb")]) }
 
       it "keeps the lets the external block references and flags the rest" do
         expect_offense(<<~RUBY)
@@ -1451,7 +1931,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     end
 
     context "when SharedExamplePaths is left empty" do
-      let(:cop_config) { { "CheckLetBang" => true, "SharedExamplePaths" => [] } }
+      let(:cop_config) { super().merge("SharedExamplePaths" => []) }
 
       it "stays conservative and silences every visible let" do
         expect_no_offenses(<<~RUBY)
@@ -1466,12 +1946,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     end
 
     context "when SharedExamplePaths matches no files" do
-      let(:cop_config) do
-        {
-          "CheckLetBang" => true,
-          "SharedExamplePaths" => [File.join(support_dir, "missing", "*.rb")]
-        }
-      end
+      let(:cop_config) { super().merge("SharedExamplePaths" => [File.join(support_dir, "missing", "*.rb")]) }
 
       it "tolerates the empty match and stays conservative" do
         expect_no_offenses(<<~RUBY)
@@ -1505,12 +1980,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     end
 
     context "when the same file backs many investigations" do
-      let(:cop_config) do
-        {
-          "CheckLetBang" => true,
-          "SharedExamplePaths" => [File.join(support_dir, "*.rb")]
-        }
-      end
+      let(:cop_config) { super().merge("SharedExamplePaths" => [File.join(support_dir, "*.rb")]) }
 
       around do |example|
         described_class.external_definitions_cache.clear
@@ -1608,12 +2078,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     context "when a pre-loaded file cannot be parsed" do
       before { File.write(File.join(support_dir, "broken.rb"), "def oops(") }
 
-      let(:cop_config) do
-        {
-          "CheckLetBang" => true,
-          "SharedExamplePaths" => [File.join(support_dir, "broken.rb")]
-        }
-      end
+      let(:cop_config) { super().merge("SharedExamplePaths" => [File.join(support_dir, "broken.rb")]) }
 
       it "skips the unparseable file and stays conservative" do
         expect_no_offenses(<<~RUBY)

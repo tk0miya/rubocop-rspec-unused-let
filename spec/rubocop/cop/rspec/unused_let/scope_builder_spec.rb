@@ -205,7 +205,74 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
       RUBY
 
       it "records each definition with its helper" do
-        expect(subject.defs).to contain_exactly([:let, :value, anything], [:let!, :widget, anything])
+        expect(subject.defs.map { [_1.helper, _1.name] }).to contain_exactly(%i[let value], %i[let! widget])
+      end
+    end
+
+    context "with a named subject" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          subject(:widget) { described_class.new }
+        end
+      RUBY
+
+      it "records it under its own name and the implicit `subject`" do
+        expect(subject.defs).to contain_exactly(
+          have_attributes(helper: :subject, name: :widget, names: %i[widget subject])
+        )
+      end
+    end
+
+    context "with a string-named subject" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          subject("widget") { described_class.new }
+        end
+      RUBY
+
+      it "normalizes the name to a symbol" do
+        expect(subject.defs.map(&:name)).to contain_exactly(:widget)
+      end
+    end
+
+    context "with an anonymous subject" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          subject { described_class.new }
+        end
+      RUBY
+
+      it "records it namelessly and does not read its head call as a reference" do
+        expect(subject.defs).to contain_exactly(
+          have_attributes(helper: :subject, name: nil, names: [:subject])
+        )
+        expect(subject.refs).not_to include(:subject)
+      end
+    end
+
+    context "with a `subject!`" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          subject!(:widget) { create(:widget) }
+        end
+      RUBY
+
+      it "records its helper" do
+        expect(subject.defs).to contain_exactly(have_attributes(helper: :subject!, name: :widget))
+      end
+    end
+
+    %w[is_expected are_expected should should_not its].each do |one_liner|
+      context "when an example uses `#{one_liner}`" do
+        let(:source) { <<~RUBY }
+          describe "target" do
+            it { #{one_liner} }
+          end
+        RUBY
+
+        it "records a reference to the implicit `subject`" do
+          expect(subject.refs_in_example).to include(:subject)
+        end
       end
     end
 
@@ -217,7 +284,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
       RUBY
 
       it "normalizes the name to a symbol" do
-        expect(subject.defs).to contain_exactly([:let, :value, anything])
+        expect(subject.defs.map(&:name)).to contain_exactly(:value)
       end
     end
 

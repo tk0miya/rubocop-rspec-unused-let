@@ -4,15 +4,22 @@ module RuboCop
   module Cop
     module RSpec
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
-        # The RSpec node-pattern matchers this cop uses to recognize AST nodes:
-        # example/shared groups, `let`/`subject` definitions, and shared-example
-        # inclusions.
+        # The RSpec vocabulary this cop works from, and the node-pattern
+        # matchers that recognize it in an AST: example/shared groups,
+        # `let`/`subject` definitions, and shared-example inclusions.
         module Matchers
           include ::RuboCop::RSpec::Language
           extend ::RuboCop::AST::NodePattern::Macros
 
           # Node types that open a new method-definition scope by keyword.
           DEFINEE_SCOPE_TYPES = %i[def defs class module sclass].freeze
+
+          # The helpers that declare a subject.
+          SUBJECT_HELPERS = %i[subject subject!].freeze
+
+          # The helpers whose block runs eagerly, so it may exist for its side
+          # effects alone.
+          BANG_HELPERS = %i[let! subject!].freeze
 
           # Whether `node` opens a method-definition scope (a new
           # `self`/definee) of its own, by keyword or as a block: a `def`
@@ -31,7 +38,8 @@ module RuboCop
           #   def spec_group?: (RuboCop::AST::Node node) -> bool
           #   def shared_group_name: (RuboCop::AST::Node node) -> (Symbol | String)?
           #   def let_definition: (RuboCop::AST::Node node) -> [ Symbol, (Symbol | String) ]?
-          #   def subject_definition_name: (RuboCop::AST::Node node) -> Symbol?
+          #   def named_subject_definition: (RuboCop::AST::Node node) -> [ Symbol, (Symbol | String) ]?
+          #   def anonymous_subject_definition: (RuboCop::AST::Node node) -> Symbol?
           #   def inclusion_call?: (RuboCop::AST::Node node) -> bool
           #   def inclusion_name: (RuboCop::AST::Node node) -> (Symbol | String)?
           #   def nested_inclusion?: (RuboCop::AST::Node node) -> bool
@@ -77,9 +85,44 @@ module RuboCop
             }
           PATTERN
 
-          def_node_matcher :subject_definition_name, <<~PATTERN
-            (block (send nil? {:subject :subject!} (sym $_) ...) ...)
+          def_node_matcher :named_subject_definition, <<~PATTERN
+            (block (send nil? ${:subject :subject!} ({sym str} $_) ...) ...)
           PATTERN
+
+          def_node_matcher :anonymous_subject_definition, <<~PATTERN
+            (block (send nil? ${:subject :subject!}) ...)
+          PATTERN
+
+          # `[helper, name]` for a subject definition, with `name` `nil` for an
+          # anonymous `subject { }`; `nil` when the node defines no subject.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def subject_definition(node) #: [ Symbol, Symbol? ]?
+            if (named = named_subject_definition(node))
+              [named[0], named[1].to_sym]
+            elsif (helper = anonymous_subject_definition(node))
+              [helper, nil]
+            end
+          end
+
+          # Whether `node` is the `subject`/`subject!` call declaring a subject:
+          # it heads a block of any kind, or takes one as an argument. Such a
+          # call names the subject it declares, not one defined further out, so
+          # it must not be read as a reference the way a bare `subject` call is.
+          #
+          # Deliberately wider than {#subject_definition}, which recognizes only
+          # the form rubocop-rspec collects as a definition: a declaration the
+          # cop cannot check should not silence a subject elsewhere either.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def subject_definition_head?(node) #: bool
+            return false unless node.send_type?
+
+            send = node #: untyped
+            return false unless send.receiver.nil? && SUBJECT_HELPERS.include?(send.method_name)
+
+            send.block_literal? || send.last_argument&.block_pass_type? || false
+          end
 
           def_node_matcher :inclusion_call?, "(send nil? #Includes.all ...)"
 
