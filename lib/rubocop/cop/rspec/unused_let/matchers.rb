@@ -11,17 +11,21 @@ module RuboCop
           include ::RuboCop::RSpec::Language
           extend ::RuboCop::AST::NodePattern::Macros
 
-          # Node types that open a new method-definition scope (a new
-          # `self`/definee): a `def` nested inside one defines a method there,
-          # not an instance method on the surrounding example group's class.
+          # Node types that open a new method-definition scope by keyword.
           DEFINEE_SCOPE_TYPES = %i[def defs class module sclass].freeze
 
+          # Whether `node` opens a method-definition scope (a new
+          # `self`/definee) of its own, by keyword or as a block: a `def`
+          # nested inside one defines a method there, not an instance method on
+          # the surrounding example group's class.
+          #
           # @rbs node: RuboCop::AST::Node
           def definee_scope?(node) #: bool
-            DEFINEE_SCOPE_TYPES.include?(node.type)
+            DEFINEE_SCOPE_TYPES.include?(node.type) || definee_block?(node)
           end
 
           # @rbs!
+          #   def definee_block?: (RuboCop::AST::Node node) -> bool
           #   def example_group?: (RuboCop::AST::Node node) -> bool
           #   def example_send?: (RuboCop::AST::Node node) -> bool
           #   def spec_group?: (RuboCop::AST::Node node) -> bool
@@ -31,6 +35,20 @@ module RuboCop
           #   def inclusion_call?: (RuboCop::AST::Node node) -> bool
           #   def inclusion_name: (RuboCop::AST::Node node) -> (Symbol | String)?
           #   def nested_inclusion?: (RuboCop::AST::Node node) -> bool
+
+          # The blocks that run their body against a definee of their own: the
+          # anonymous class builders a spec uses for stub classes, and the
+          # `*_eval`/`*_exec` family, which defines methods on its receiver.
+          def_node_matcher :definee_block?, <<~PATTERN
+            (any_block
+              {
+                (send (const {nil? cbase} {:Class :Module :Struct}) :new ...)
+                (send (const {nil? cbase} :Data) :define ...)
+                (send !nil? {:class_eval :module_eval :instance_eval
+                             :class_exec :module_exec :instance_exec} ...)
+              }
+              ...)
+          PATTERN
 
           def_node_matcher :example_group?, <<~PATTERN
             (block (send #rspec? #ExampleGroups.all ...) ...)

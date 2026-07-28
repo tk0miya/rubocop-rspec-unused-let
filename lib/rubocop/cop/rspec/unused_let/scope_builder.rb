@@ -228,8 +228,9 @@ module RuboCop
           # `def foo` written at an example group's level becomes an instance
           # method on the group's example class. Skip `def`s that belong
           # elsewhere: nested inside a deeper example/shared group (not visible
-          # from `node`), or inside a `class`/`module`/`def` written in the group
-          # (which define methods on that inner scope, not on the example class).
+          # from `node`), or inside a definee scope written in the group (see
+          # {Matchers#definee_scope?}), which defines methods on that inner
+          # scope, not on the example class.
           #
           # @rbs node: RuboCop::AST::Node
           def method_definitions_in(node) #: Array[RuboCop::AST::Node]
@@ -238,7 +239,7 @@ module RuboCop
 
           # Whether `defn` defines an instance method on `group`'s example class:
           # walking outward, `group` is reached before any nested spec group or
-          # inner definee scope (`class`/`module`/`def`/...) that would claim it.
+          # inner definee scope that would claim it.
           #
           # @rbs defn: RuboCop::AST::Node
           # @rbs group: RuboCop::AST::Node
