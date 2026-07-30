@@ -12,13 +12,18 @@ module RuboCop
 
           extend ::RuboCop::AST::NodePattern::Macros
 
-          # Node types that open a new method-definition scope (a new
-          # `self`/definee): a `def` nested inside one defines a method there,
-          # not an instance method on the surrounding example group's class.
+          # Node types that open a new method-definition scope by keyword.
           DEFINEE_SCOPE_TYPES: untyped
 
+          # Whether `node` opens a method-definition scope (a new
+          # `self`/definee) of its own, by keyword or as a block: a `def`
+          # nested inside one defines a method there, not an instance method on
+          # the surrounding example group's class.
+          #
           # @rbs node: RuboCop::AST::Node
           def definee_scope?: (RuboCop::AST::Node node) -> bool
+
+          def definee_block?: (RuboCop::AST::Node node) -> bool
 
           def example_group?: (RuboCop::AST::Node node) -> bool
 

@@ -90,7 +90,8 @@ module RuboCop
           # Sort one subtree node into the shared block's definitions,
           # references or nested inclusions. A `def` counts as a definition only
           # when it sits at the shared block's own level; one nested in an inner
-          # `class`/`module`/`def` defines a method there, not on the block.
+          # definee scope (see {Matchers#definee_scope?}) defines a method
+          # there, not on the block.
           #
           # @rbs child: RuboCop::AST::Node
           # @rbs block_node: RuboCop::AST::Node
@@ -109,9 +110,9 @@ module RuboCop
           end
 
           # Whether `defn` sits directly in `block_node`, with no inner definee
-          # scope (`class`/`module`/`def`/...) claiming it along the way. Nested
-          # example groups are not a boundary here: the block's whole subtree is
-          # gathered flat, as its `let`s and references are.
+          # scope claiming it along the way. Nested example groups are not a
+          # boundary here: the block's whole subtree is gathered flat, as its
+          # `let`s and references are.
           #
           # @rbs defn: RuboCop::AST::Node
           # @rbs block_node: RuboCop::AST::Node

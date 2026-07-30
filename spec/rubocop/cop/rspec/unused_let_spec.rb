@@ -494,6 +494,30 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           end
         end
 
+        context "when the shared block has an anonymous class defining the same name" do
+          it "still treats the name as a free reference of the block" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                let(:dummy) do
+                  Class.new do
+                    def name
+                      "other"
+                    end
+                  end
+                end
+
+                it { expect(dummy.new.name).not_to eq(name) }
+              end
+
+              RSpec.describe Foo do
+                let(:name) { "value" }
+
+                it_behaves_like "a thing"
+              end
+            RUBY
+          end
+        end
+
         context "when the block defines the name itself as a helper method" do
           it "flags a same-named `let` the isolated `it_behaves_like` never uses" do
             expect_offense(<<~RUBY)
@@ -1203,6 +1227,141 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
               end
 
               it { expect(true).to be(true) }
+            end
+          RUBY
+        end
+      end
+
+      context "with an anonymous class" do
+        it "does not treat its method as a group helper" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              let(:klass) do
+                Class.new do
+                  def call
+                    1
+                  end
+                end
+              end
+
+              it { expect(klass.new.call).to eq(1) }
+            end
+          RUBY
+        end
+      end
+
+      context "with an anonymous struct" do
+        it "does not treat its method as a group helper" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              let(:klass) do
+                Struct.new(:value) do
+                  def call
+                    value
+                  end
+                end
+              end
+
+              it { expect(klass.new(1).call).to eq(1) }
+            end
+          RUBY
+        end
+      end
+
+      context "with an anonymous `Data` class" do
+        it "does not treat its method as a group helper" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              let(:klass) do
+                Data.define(:value) do
+                  def call
+                    value
+                  end
+                end
+              end
+
+              it { expect(klass.new(value: 1).call).to eq(1) }
+            end
+          RUBY
+        end
+      end
+
+      context "with a class reopened through `class_eval`" do
+        context "with no parameter, a `block` node" do
+          it "does not treat its method as a group helper" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe Foo do
+                before do
+                  Dummy.class_eval do
+                    def call
+                      1
+                    end
+                  end
+                end
+
+                it { expect(Dummy.new.call).to eq(1) }
+              end
+            RUBY
+          end
+        end
+
+        context "with a numbered parameter, a `numblock` node" do
+          it "does not treat its method as a group helper" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe Foo do
+                before do
+                  Dummy.class_eval do
+                    def call
+                      1
+                    end
+
+                    _1.freeze
+                  end
+                end
+
+                it { expect(Dummy.new.call).to eq(1) }
+              end
+            RUBY
+          end
+        end
+
+        # Pinned to 3.4, the version that first parses `it` as the parameter.
+        context "with the implicit `it` parameter, an `itblock` node" do
+          let(:ruby_version) { 3.4 }
+
+          it "does not treat its method as a group helper" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe Foo do
+                before do
+                  Dummy.class_eval do
+                    def call
+                      1
+                    end
+
+                    it.freeze
+                  end
+                end
+
+                it { expect(Dummy.new.call).to eq(1) }
+              end
+            RUBY
+          end
+        end
+      end
+
+      context "with an object reopened through `instance_eval`" do
+        it "does not treat its method as a group helper" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              before do
+                Dummy.instance_eval do
+                  def call
+                    1
+                  end
+                end
+              end
+
+              it { expect(Dummy.call).to eq(1) }
             end
           RUBY
         end
