@@ -3,9 +3,10 @@
 # Helpers for unit specs of the UnusedLet support classes, which operate on
 # raw AST nodes outside of a cop investigation.
 module UnusedLetAstHelper
-  # Parse `source` and return the root node.
-  def parse(source)
-    processed = RuboCop::ProcessedSource.new(source, RUBY_VERSION.to_f)
+  # Parse `source` and return the root node. `ruby_version` selects the syntax
+  # to parse as, for node types only a newer Ruby produces.
+  def parse(source, ruby_version = RUBY_VERSION.to_f)
+    processed = RuboCop::ProcessedSource.new(source, ruby_version)
     raise ArgumentError, "invalid source: #{processed.diagnostics.map(&:render)}" unless processed.valid_syntax?
 
     processed.ast

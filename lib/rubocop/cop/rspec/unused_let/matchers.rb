@@ -23,6 +23,7 @@ module RuboCop
 
           # @rbs!
           #   def example_group?: (RuboCop::AST::Node node) -> bool
+          #   def example_send?: (RuboCop::AST::Node node) -> bool
           #   def spec_group?: (RuboCop::AST::Node node) -> bool
           #   def shared_group_name: (RuboCop::AST::Node node) -> (Symbol | String)?
           #   def let_definition: (RuboCop::AST::Node node) -> [ Symbol, (Symbol | String) ]?
@@ -33,6 +34,14 @@ module RuboCop
 
           def_node_matcher :example_group?, <<~PATTERN
             (block (send #rspec? #ExampleGroups.all ...) ...)
+          PATTERN
+
+          # The `send` of an example (`it`, `specify`, ...), with or without a
+          # block, so a pending `it "does something"` matches too. Named apart
+          # from `RuboCop::RSpec::Language#example?`, which this module includes
+          # and which matches the surrounding block node instead.
+          def_node_matcher :example_send?, <<~PATTERN
+            (send nil? #Examples.all ...)
           PATTERN
 
           def_node_matcher :spec_group?, <<~PATTERN

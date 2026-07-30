@@ -4,18 +4,17 @@
   example group's level whose name is never referenced. Such a method
   becomes an instance method on the group's example class, so it is checked
   with the same rules as a `let`, and autocorrect removes it.
-- `RSpec/UnusedLet` now resolves `shared_examples`/`shared_context`
-  inclusions precisely instead of silencing every `let` in scope: it works
-  out which `let`s the shared block actually references and treats only
-  those as used, staying conservative for an inclusion it cannot resolve.
-  Blocks in the file under inspection are handled automatically;
-  `SharedExamplePaths` (a list of paths or globs) names the files whose
-  top-level blocks are also resolved. It defaults to `spec/support/**/*.rb`,
-  the glob rspec-rails offers for requiring support files.
-- `RSpec/UnusedLet` no longer flags a `let` that overrides one a shared
-  block defines and uses, when that block is included inline with
-  `include_examples` / `include_context`. Included with `it_behaves_like`,
-  the block keeps its own definition, so the outer `let` stays checked.
+- `RSpec/UnusedLet` now understands `shared_examples` / `shared_context`.
+  Where it used to silence every `let` an inclusion could reach, it now works
+  out which ones the shared block really uses, falling back to the old
+  behavior only for an inclusion it cannot resolve, and it no longer flags a
+  `let` that overrides a name an inline inclusion (`include_examples` /
+  `include_context`) injects and the shared block itself references. It also
+  checks the `let`s defined inside a shared block that carries examples —
+  expect new offenses on upgrade. `SharedExamplePaths` lists the files,
+  besides the one under inspection, whose top-level blocks are resolved, and
+  defaults to `spec/support/**/*.rb`; `CheckSharedExamples: false` leaves the
+  `let`s inside shared blocks unchecked, as before.
 - `RSpec/UnusedLet` now skips helper specs (rspec-rails `type: :helper`, or
   files under `spec/helpers`) by default, since the auto-included module may
   reference any `let` unseen. Set `CheckHelperSpecs: true` to check them.

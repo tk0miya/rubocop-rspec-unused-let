@@ -22,6 +22,8 @@ module RuboCop
 
           def example_group?: (RuboCop::AST::Node node) -> bool
 
+          def example_send?: (RuboCop::AST::Node node) -> bool
+
           def spec_group?: (RuboCop::AST::Node node) -> bool
 
           def shared_group_name: (RuboCop::AST::Node node) -> (Symbol | String)?

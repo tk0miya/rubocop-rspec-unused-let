@@ -8,8 +8,9 @@ module RuboCop
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
         # A mutable record of one example or shared group: the `let`s it defines,
         # the references it makes (kept apart by whether they sit in a helper
-        # body or in an example), whether it pulls in a shared example group, and
-        # which of its `let`s have been resolved to a reference.
+        # body or in an example), whether an example runs in it, whether it pulls
+        # in a shared example group, and which of its `let`s have been resolved
+        # to a reference.
         class Scope
           # @rbs! type kind = :example | :shared
 
@@ -25,7 +26,8 @@ module RuboCop
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
           # @rbs type: Symbol?
-          def initialize(node:, kind:, type: nil) #: void
+          # @rbs carries_examples: bool
+          def initialize(node:, kind:, type: nil, carries_examples: false) #: void
             @node = node
             @kind = kind
             @defs = []
@@ -34,6 +36,7 @@ module RuboCop
             @inclusion = false
             @type = type
             @resolved = Set.new
+            @carries_examples = carries_examples
           end
 
           # @rbs helper: Symbol
@@ -62,28 +65,27 @@ module RuboCop
             resolved << name
           end
 
-          def example? #: bool
-            kind == :example
-          end
-
           def shared? #: bool
             kind == :shared
+          end
+
+          # Whether an example runs in this group or in an example group nested
+          # in it.
+          def carries_examples? #: bool
+            carries_examples
           end
 
           def defined_names #: Array[Symbol]
             defs.map { |_, name, _| name }
           end
 
-          # Shared groups never report — their `let`s may be consumed by external
-          # including groups.
           def unreferenced_defs #: Array[[ Symbol, Symbol, RuboCop::AST::Node ]]
-            return [] unless example?
-
             defs.reject { |_, name, _| resolved.include?(name) }
           end
 
           private
 
+          attr_reader :carries_examples #: bool
           attr_writer :inclusion #: bool
         end
       end

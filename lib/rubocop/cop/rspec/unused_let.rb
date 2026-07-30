@@ -25,14 +25,15 @@ module RuboCop
       #
       # Because RuboCop analyzes one file at a time, the cop stays silent
       # wherever it cannot see every possible reference: `let`s inside a
-      # `shared_examples`/`shared_context` block, `let`s visible at an inclusion
-      # whose shared block it cannot find, `let`s a well-known gem's shared
-      # context consumes implicitly (recognized by the group's `type:`
-      # metadata), and helper specs. Where it can see the shared block, only the
-      # `let`s that block references are treated as used and the rest stay
-      # checked. `SharedExamplePaths` lists the files it pre-loads to see blocks
-      # defined elsewhere, and defaults to `spec/support/**/*.rb` — the glob
-      # rspec-rails offers for requiring support files. See
+      # `shared_examples`/`shared_context` block that carries no examples (a
+      # provider, whose `let`s exist for the including group), `let`s visible at
+      # an inclusion whose shared block it cannot find, `let`s a well-known
+      # gem's shared context consumes implicitly (recognized by the group's
+      # `type:` metadata), and helper specs. Where it can see the shared block,
+      # only the `let`s that block references are treated as used and the rest
+      # stay checked. `SharedExamplePaths` lists the files it pre-loads to see
+      # blocks defined elsewhere, and defaults to `spec/support/**/*.rb` — the
+      # glob rspec-rails offers for requiring support files. See
       # {https://github.com/tk0miya/rubocop-rspec-unused-let#readme the README}
       # for the exact rules and their known limitations.
       #
@@ -124,6 +125,30 @@ module RuboCop
       #     it { expect(helper.greeting).to eq("Hi") }
       #   end
       #
+      # @example CheckSharedExamples: true (default)
+      #   # bad - the block carries examples, so it is meant to be run rather
+      #   # than to supply `let`s to its includer, and is checked like any group
+      #   RSpec.shared_examples "a thing" do
+      #     let(:unused) { 1 }
+      #
+      #     it { expect(value).to eq(1) }
+      #   end
+      #
+      #   # good - no examples, so the block is a provider pulled in with
+      #   # `include_context` and its `let`s stay unchecked
+      #   RSpec.shared_context "with a thing" do
+      #     let(:provided) { 1 }
+      #   end
+      #
+      # @example CheckSharedExamples: false
+      #   # good - every `let` inside a shared block is left alone, in case a
+      #   # group including the block references it from another file
+      #   RSpec.shared_examples "a thing" do
+      #     let(:unused) { 1 }
+      #
+      #     it { expect(value).to eq(1) }
+      #   end
+      #
       # @safety
       #   Autocorrect deletes the flagged `let` definition. That is behaviorally
       #   safe for a plain `let`, whose block never runs when the helper is
@@ -131,6 +156,11 @@ module RuboCop
       #   purely for its side effects. RuboCop treats autocorrect safety as a
       #   whole-cop setting, so the cop is marked unsafe and both `let` and
       #   `let!` are only removed under `rubocop --autocorrect-all`.
+      #
+      #   Inside a shared block that carries examples the cop never follows an
+      #   inclusion site back to the block, so a `let` only an including group
+      #   references is removed. Set `CheckSharedExamples: false` to leave shared
+      #   blocks alone.
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
         extend AutoCorrector
 
@@ -140,6 +170,14 @@ module RuboCop
               "Remove it or reference it in an example."
         DEF_MSG = "`def %<name>s` is not referenced anywhere. " \
                   "Remove it or reference it in an example."
+
+        # Inside a shared block the claim has to be narrower: a group including
+        # the block from a file the cop never reads could still reference the
+        # name, so the finding is scoped to what this block can be seen to do.
+        MSG_IN_SHARED_GROUP = "`%<helper>s(:%<name>s)` is not referenced anywhere in this shared example group. " \
+                              "Remove it or reference it in an example."
+        DEF_MSG_IN_SHARED_GROUP = "`def %<name>s` is not referenced anywhere in this shared example group. " \
+                                  "Remove it or reference it in an example."
 
         # @rbs!
         #   type cache_key = [ Time, Integer ]
@@ -193,8 +231,6 @@ module RuboCop
 
         # A group's `let`s know whether they were referenced once its whole
         # subtree has been entered, which is complete by the time it is left.
-        # Nothing under a shared block is reported: those `let`s belong to
-        # whichever (possibly external) groups include it.
         #
         # @rbs node: RuboCop::AST::Node
         def after_block(node) #: void
@@ -203,7 +239,8 @@ module RuboCop
           scope = stack.pop
           return unless scope
 
-          report(scope) unless stack.any?(&:shared?)
+          shared_groups = [scope, *stack].select(&:shared?)
+          report(scope, in_shared_group: shared_groups.any?) if reportable_in?(shared_groups)
         end
 
         private
@@ -343,26 +380,47 @@ module RuboCop
           end
         end
 
+        # Whether a group enclosed by `shared_groups` (the shared blocks among it
+        # and its ancestors, in no particular order) can be judged from this
+        # file: only when every one of them carries examples. A shared block
+        # without them is a provider, existing to inject its `let`s into
+        # whichever group writes `include_context`, so a `let` it never
+        # references itself is exactly what it is for, not dead code.
+        #
+        # `CheckSharedExamples: false` puts every shared block — and every group
+        # nested in one — off limits instead, since the groups that include the
+        # block may live in files the cop never reads.
+        #
+        # @rbs shared_groups: Array[Scope]
+        def reportable_in?(shared_groups) #: bool
+          return true if shared_groups.empty?
+          return false unless cop_config["CheckSharedExamples"]
+
+          shared_groups.all?(&:carries_examples?)
+        end
+
         # @rbs scope: Scope
-        def report(scope) #: void
+        # @rbs in_shared_group: bool
+        def report(scope, in_shared_group:) #: void
           scope.unreferenced_defs.each do |helper, name, let_node|
             next if helper == :let! && !cop_config["CheckLetBang"]
 
-            add_offense_for(let_node, helper, name)
+            add_offense_for(let_node, helper, name, in_shared_group: in_shared_group)
           end
         end
 
         # @rbs let_node: RuboCop::AST::Node
         # @rbs helper: Symbol
         # @rbs name: Symbol
-        def add_offense_for(let_node, helper, name) #: void
+        # @rbs in_shared_group: bool
+        def add_offense_for(let_node, helper, name, in_shared_group:) #: void
           node = let_node #: untyped
           if node.def_type?
             highlight = node.loc.keyword.join(node.loc.name)
-            message = format(DEF_MSG, name: name)
+            message = format(in_shared_group ? DEF_MSG_IN_SHARED_GROUP : DEF_MSG, name: name)
           else
             highlight = node.block_type? ? node.send_node : node
-            message = format(MSG, helper: helper, name: name)
+            message = format(in_shared_group ? MSG_IN_SHARED_GROUP : MSG, helper: helper, name: name)
           end
           add_offense(highlight, message: message) do |corrector|
             corrector.remove(

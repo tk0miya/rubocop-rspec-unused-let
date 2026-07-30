@@ -19,6 +19,16 @@ module RuboCop
           # rspec-rails infers `type: :helper` for spec files under `spec/helpers`.
           HELPER_SPEC_PATH = %r{(?:^|/)spec/helpers/}.freeze
 
+          # The block node types: `{ |x| }` parses as `block`, `{ _1 }` as
+          # `numblock` and Ruby 3.4's `{ it }` as `itblock`.
+          BLOCK_TYPES = %i[block numblock itblock].freeze
+
+          # Every node type whose body holds code at a remove from the group it
+          # is written in, hiding an example selector from {#example_of?}.
+          # Anything that opens a new definee qualifies: code that does not run
+          # in the group's own scope cannot be defining one of its examples.
+          ENCLOSING_BODY_TYPES = (BLOCK_TYPES + Matchers::DEFINEE_SCOPE_TYPES).freeze
+
           # `let` names that well-known gems' shared contexts implicitly
           # reference, hidden from single-file analysis, keyed by the `type:`
           # metadata that pulls the shared context in. When a group carries a
@@ -50,7 +60,7 @@ module RuboCop
           def build_from(node) #: Scope
             kind = example_group?(node) ? :example : :shared #: Scope::kind
             type = type_from_group(node) || type_from_filename(spec_filename)
-            scope = Scope.new(node: node, kind: kind, type: type)
+            scope = Scope.new(node: node, kind: kind, type: type, carries_examples: carries_examples?(node))
             helpers = helper_nodes(node)
             collect_definitions(node, scope)
             helpers.each { record_helper_references(_1, scope) }
@@ -63,6 +73,45 @@ module RuboCop
 
           attr_reader :spec_filename #: String?
           attr_reader :registry #: SharedExampleRegistry
+
+          # Whether `node` carries an example: one it would run itself, its
+          # nested example groups included. For a shared block this has to come
+          # from the contents, since the keyword that opened it says nothing:
+          # RSpec makes `shared_examples` and `shared_context` aliases.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def carries_examples?(node) #: bool
+            node.each_descendant(:send).any? { example_send?(_1) && example_of?(_1, node) }
+          end
+
+          # Whether `node` would run `example_send` as one of its own examples,
+          # rather than merely holding the name: only a nested example group and
+          # the example's own block may sit between the two.
+          #
+          # What tells the two roles of `skip`/`pending` apart is position: at a
+          # group's level the call defines a pending example, while inside any
+          # other body — a hook, an example, a `let`, a `def` helper — it acts on
+          # the example already running.
+          #
+          # @rbs example_send: RuboCop::AST::Node
+          # @rbs node: RuboCop::AST::Node
+          def example_of?(example_send, node) #: bool
+            example_send
+              .each_ancestor(*ENCLOSING_BODY_TYPES)
+              .take_while { !_1.equal?(node) }
+              .all? { example_group?(_1) || own_block_of?(_1, example_send) }
+          end
+
+          # Whether `candidate` is the example's own block, as in `it { ... }`.
+          #
+          # @rbs candidate: RuboCop::AST::Node
+          # @rbs example_send: RuboCop::AST::Node
+          def own_block_of?(candidate, example_send) #: bool
+            return false unless candidate.type?(*BLOCK_TYPES)
+
+            node = candidate #: untyped
+            node.send_node.equal?(example_send)
+          end
 
           # A well-known gem's shared context (pulled in by `type:` metadata)
           # can reference `let` names that single-file analysis never sees.

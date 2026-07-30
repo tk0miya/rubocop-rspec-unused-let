@@ -6,7 +6,7 @@ require "tmpdir"
 RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
   include_context "with default RSpec/Language config"
 
-  let(:cop_config) { { "CheckLetBang" => true } }
+  let(:cop_config) { { "CheckLetBang" => true, "CheckSharedExamples" => true } }
 
   context "with let" do
     context "when unused" do
@@ -795,17 +795,237 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
       end
     end
 
-    context "with lets defined inside a shared example block" do
-      it "does not flag them, at any nesting depth" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.shared_examples "a thing" do
-            let(:direct) { 1 }
+    context "when defined inside a shared example block" do
+      context "when CheckSharedExamples is enabled (default)" do
+        context "when the block carries examples" do
+          context "when nothing in the block references the let" do
+            it "flags it and removes the definition" do
+              expect_offense(<<~RUBY)
+                RSpec.shared_examples "a thing" do
+                  let(:used) { 1 }
+                  let(:unused) { 2 }
+                  ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere in this shared example group. Remove it or reference it in an example.
 
-            context "nested" do
-              let(:nested) { 2 }
+                  it { expect(used).to eq(1) }
+                end
+              RUBY
+
+              expect_correction(<<~RUBY)
+                RSpec.shared_examples "a thing" do
+                  let(:used) { 1 }
+
+                  it { expect(used).to eq(1) }
+                end
+              RUBY
             end
           end
-        RUBY
+
+          context "when a nested group's example references the let" do
+            it "keeps it" do
+              expect_no_offenses(<<~RUBY)
+                RSpec.shared_examples "a thing" do
+                  let(:used) { 1 }
+
+                  context "nested" do
+                    it { expect(used).to eq(1) }
+                  end
+                end
+              RUBY
+            end
+          end
+
+          context "when the unused let sits in a nested group" do
+            it "flags it" do
+              expect_offense(<<~RUBY)
+                RSpec.shared_examples "a thing" do
+                  it { expect(true).to be(true) }
+
+                  context "nested" do
+                    let(:unused) { 1 }
+                    ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere in this shared example group. Remove it or reference it in an example.
+                  end
+                end
+              RUBY
+            end
+          end
+
+          context "when a let of the block is built from a name it does not define" do
+            it "keeps the let and leaves the free reference alone" do
+              expect_no_offenses(<<~RUBY)
+                RSpec.shared_examples "a thing" do
+                  let(:local) { from_the_includer }
+
+                  it { expect(local).to eq(1) }
+                end
+              RUBY
+            end
+          end
+
+          context "when the block holds an unresolvable inclusion" do
+            it "stays conservative and keeps every let" do
+              expect_no_offenses(<<~RUBY)
+                RSpec.shared_examples "a thing" do
+                  let(:maybe_used) { 1 }
+
+                  it { expect(true).to be(true) }
+
+                  it_behaves_like "something external"
+                end
+              RUBY
+            end
+          end
+
+          context "when the block sits inside an example group" do
+            it "checks it without disturbing the outer group" do
+              expect_offense(<<~RUBY)
+                RSpec.describe Foo do
+                  shared_examples "a thing" do
+                    let(:unused) { 1 }
+                    ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere in this shared example group. Remove it or reference it in an example.
+
+                    it { expect(outer).to eq(1) }
+                  end
+
+                  let(:outer) { 1 }
+
+                  it_behaves_like "a thing"
+                end
+              RUBY
+            end
+          end
+
+          context "when the includer of an inline inclusion references the let" do
+            it "flags it anyway, inclusion sites never being followed back" do
+              expect_offense(<<~RUBY)
+                RSpec.describe Foo do
+                  shared_examples "a thing" do
+                    let(:x) { 1 }
+                    ^^^^^^^ `let(:x)` is not referenced anywhere in this shared example group. Remove it or reference it in an example.
+
+                    it { expect(true).to be(true) }
+                  end
+
+                  include_examples "a thing"
+
+                  it { expect(x).to eq(1) }
+                end
+              RUBY
+            end
+          end
+
+          context "when it holds a nested shared block that carries examples too" do
+            it "flags the inner block's unused let as well" do
+              expect_offense(<<~RUBY)
+                RSpec.shared_examples "a thing" do
+                  it { expect(1).to eq(1) }
+
+                  shared_examples "inner" do
+                    let(:unused) { 2 }
+                    ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere in this shared example group. Remove it or reference it in an example.
+
+                    it { expect(1).to eq(1) }
+                  end
+                end
+              RUBY
+            end
+          end
+        end
+
+        context "when the block carries no examples" do
+          context "when it is opened with `shared_context`" do
+            it "leaves the provider's lets alone" do
+              expect_no_offenses(<<~RUBY)
+                RSpec.shared_context "with a thing" do
+                  let(:provided) { 1 }
+                end
+              RUBY
+            end
+          end
+
+          context "when it is opened with `shared_examples`" do
+            it "leaves them alone too, the keyword carrying no guarantee" do
+              expect_no_offenses(<<~RUBY)
+                RSpec.shared_examples "with a thing" do
+                  let(:provided) { 1 }
+                end
+              RUBY
+            end
+          end
+
+          context "when it holds a nested group" do
+            it "leaves the nested lets alone as well" do
+              expect_no_offenses(<<~RUBY)
+                RSpec.shared_context "with a thing" do
+                  let(:provided) { 1 }
+
+                  context "nested" do
+                    let(:also_provided) { 2 }
+                  end
+                end
+              RUBY
+            end
+          end
+
+          context "when it holds a nested shared block that carries examples" do
+            it "leaves the lets of both alone, the examples being the inner block's" do
+              expect_no_offenses(<<~RUBY)
+                RSpec.shared_context "with a thing" do
+                  let(:provided) { 1 }
+
+                  shared_examples "inner" do
+                    let(:unused) { 2 }
+
+                    it { expect(1).to eq(1) }
+                  end
+                end
+              RUBY
+            end
+          end
+
+          context "when it is nested inside a shared block that carries examples" do
+            it "leaves the provider's lets alone, judging it on its own contents" do
+              expect_no_offenses(<<~RUBY)
+                RSpec.shared_examples "a thing" do
+                  it { expect(1).to eq(1) }
+
+                  shared_context "with a thing" do
+                    let(:provided) { 2 }
+                  end
+                end
+              RUBY
+            end
+          end
+        end
+      end
+
+      context "when CheckSharedExamples is disabled" do
+        let(:cop_config) { super().merge("CheckSharedExamples" => false) }
+
+        context "when the block carries examples" do
+          it "does not flag its lets" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                let(:unused) { 1 }
+
+                it { expect(value).to eq(1) }
+              end
+            RUBY
+          end
+        end
+
+        context "when the block carries no examples" do
+          it "does not flag them either, at any nesting depth" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.shared_examples "a thing" do
+                let(:direct) { 1 }
+
+                context "nested" do
+                  let(:nested) { 2 }
+                end
+              end
+            RUBY
+          end
+        end
       end
     end
   end
@@ -990,14 +1210,35 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     end
 
     context "when defined inside a shared example block" do
-      it "does not flag it" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.shared_examples "a thing" do
-            def helper
-              1
+      context "when CheckSharedExamples is enabled (default)" do
+        it "flags it" do
+          expect_offense(<<~RUBY)
+            RSpec.shared_examples "a thing" do
+              def unused
+              ^^^^^^^^^^ `def unused` is not referenced anywhere in this shared example group. Remove it or reference it in an example.
+                1
+              end
+
+              it { expect(true).to be(true) }
             end
-          end
-        RUBY
+          RUBY
+        end
+      end
+
+      context "when CheckSharedExamples is disabled" do
+        let(:cop_config) { super().merge("CheckSharedExamples" => false) }
+
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.shared_examples "a thing" do
+              def helper
+                1
+              end
+
+              it { expect(true).to be(true) }
+            end
+          RUBY
+        end
       end
     end
 
