@@ -91,6 +91,15 @@ module RuboCop
           # @rbs scope: Scope
           def collect_definitions: (RuboCop::AST::Node node, Scope scope) -> void
 
+          # A `subject` is a `let` that additionally answers to the implicit
+          # name `subject` (see {References::SUBJECT_ALIASES}), recorded as its
+          # alias. An anonymous `subject { }` has no other name, so that alias
+          # is the only way to reach it.
+          #
+          # @rbs group: RuboCop::RSpec::ExampleGroup
+          # @rbs scope: Scope
+          def collect_subject_definitions: (RuboCop::RSpec::ExampleGroup group, Scope scope) -> void
+
           # `def foo` at an example group's level becomes an instance method on
           # the group's example class, so it is a definition just like a `let`.
           #
@@ -103,6 +112,10 @@ module RuboCop
           # `refs_in_example`. Stops at nested spec groups and skips the helper
           # definitions, whose references belong to `refs`. Resolves a shared
           # inclusion found along the way.
+          #
+          # A subject in a form `helper_nodes` misses (`subject { _1 }`,
+          # `subject(:x, &blk)`) reaches this walk, so its declaring call is
+          # left out of the references here too.
           #
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope

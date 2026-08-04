@@ -392,6 +392,94 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::SharedExampleRegistry do
         expect(subject).to be_nil
       end
     end
+
+    context "when the shared block uses the one-liner syntax" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          it { is_expected.to be_valid }
+        end
+
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it { is_expected.to include(:subject) }
+    end
+
+    context "when the shared block declares its own anonymous subject" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          subject { described_class.new }
+
+          it { is_expected.to be_valid }
+        end
+
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it { is_expected.not_to include(:subject) }
+    end
+
+    context "when the shared block declares a named subject" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          subject(:widget) { described_class.new }
+
+          it { expect(widget).to be_valid }
+        end
+
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it { is_expected.not_to include(:widget, :subject) }
+    end
+
+    context "when a nested context of the shared block declares the only subject" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          context "inner" do
+            subject { described_class.new }
+
+            it { expect(Foo.count).to eq(0) }
+          end
+        end
+
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it "does not read the nested declaration as a reference" do
+        expect(subject).not_to include(:subject)
+      end
+    end
+
+    context "when a nested context shadows a subject the block's own level uses" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          it { is_expected.to be_valid }
+
+          context "inner" do
+            subject { described_class.new }
+
+            it { is_expected.not_to be_valid }
+          end
+        end
+
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it "still consumes the subject the block's own level needs" do
+        expect(subject).to include(:subject)
+      end
+    end
   end
 
   describe "#bound_references" do

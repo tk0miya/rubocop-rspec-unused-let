@@ -11,14 +11,17 @@ require_relative "unused_let/shared_example_registry"
 module RuboCop
   module Cop
     module RSpec
-      # Checks for `let` definitions and helper methods that are never
+      # Checks for `let`/`subject` definitions and helper methods that are never
       # referenced.
       #
       # A `let` (or `let!`) whose name is never used within its scope is dead
       # code that makes specs harder to read. This cop flags such definitions.
       # A helper method (`def`) written at an example group's level becomes an
       # instance method on the group's example class, so it is checked the same
-      # way.
+      # way. A `subject` (or `subject!`) is checked too: it answers both to its
+      # own name, when it has one, and to the implicit name `subject`, which
+      # `is_expected`, `are_expected`, `should`, `should_not` and rspec-its'
+      # `its` reach.
       # Dynamic references count as usages too: a call to `send`, `public_send`,
       # `__send__`, `method` or `respond_to?` with a literal name (e.g.
       # `send(:foo)`) references the `let` or method it names.
@@ -72,6 +75,28 @@ module RuboCop
       #     it { expect(used).to eq(1) }
       #   end
       #
+      # @example a subject
+      #   # bad
+      #   describe Foo do
+      #     subject { described_class.new }
+      #
+      #     it { expect(Foo.count).to eq(0) }
+      #   end
+      #
+      #   # good - the one-liner syntax references the subject
+      #   describe Foo do
+      #     subject { described_class.new }
+      #
+      #     it { is_expected.to be_valid }
+      #   end
+      #
+      #   # good - a named subject may be referenced by either name
+      #   describe Foo do
+      #     subject(:widget) { described_class.new }
+      #
+      #     it { expect(widget).to be_valid }
+      #   end
+      #
       # @example a same-named `let` in the including group
       #   RSpec.shared_examples "uses size" do
       #     let(:size) { 1 }
@@ -93,7 +118,7 @@ module RuboCop
       #   end
       #
       # @example CheckLetBang: true (default)
-      #   # bad
+      #   # bad - applies to `subject!` as well as `let!`
       #   describe Foo do
       #     let!(:widget) { create(:widget) }
       #
@@ -106,6 +131,22 @@ module RuboCop
       #     let!(:widget) { create(:widget) }
       #
       #     it { expect(Widget.count).to eq(1) }
+      #   end
+      #
+      # @example CheckSubject: true (default)
+      #   # bad
+      #   describe Foo do
+      #     subject(:widget) { described_class.new }
+      #
+      #     it { expect(Foo.count).to eq(0) }
+      #   end
+      #
+      # @example CheckSubject: false
+      #   # good - a `subject` is left alone even when nothing references it
+      #   describe Foo do
+      #     subject(:widget) { described_class.new }
+      #
+      #     it { expect(Foo.count).to eq(0) }
       #   end
       #
       # @example CheckHelperSpecs: false (default)
@@ -150,17 +191,17 @@ module RuboCop
       #   end
       #
       # @safety
-      #   Autocorrect deletes the flagged `let` definition. That is behaviorally
-      #   safe for a plain `let`, whose block never runs when the helper is
-      #   unreferenced, but a `let!` block is executed eagerly and may exist
-      #   purely for its side effects. RuboCop treats autocorrect safety as a
-      #   whole-cop setting, so the cop is marked unsafe and both `let` and
-      #   `let!` are only removed under `rubocop --autocorrect-all`.
+      #   Autocorrect deletes the flagged definition. That is behaviorally safe
+      #   for a plain `let` or `subject`, whose block never runs when the helper
+      #   is unreferenced, but a `let!`/`subject!` block is executed eagerly and
+      #   may exist purely for its side effects. RuboCop treats autocorrect
+      #   safety as a whole-cop setting, so the cop is marked unsafe and every
+      #   flagged definition is only removed under `rubocop --autocorrect-all`.
       #
       #   Inside a shared block that carries examples the cop never follows an
-      #   inclusion site back to the block, so a `let` only an including group
-      #   references is removed. Set `CheckSharedExamples: false` to leave shared
-      #   blocks alone.
+      #   inclusion site back to the block, so a definition only an including
+      #   group references is removed. Set `CheckSharedExamples: false` to leave
+      #   shared blocks alone.
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
         extend AutoCorrector
 
@@ -170,6 +211,8 @@ module RuboCop
               "Remove it or reference it in an example."
         DEF_MSG = "`def %<name>s` is not referenced anywhere. " \
                   "Remove it or reference it in an example."
+        ANONYMOUS_SUBJECT_MSG = "`%<helper>s` is not referenced anywhere. " \
+                                "Remove it or reference it in an example."
 
         # Inside a shared block the claim has to be narrower: a group including
         # the block from a file the cop never reads could still reference the
@@ -178,6 +221,9 @@ module RuboCop
                               "Remove it or reference it in an example."
         DEF_MSG_IN_SHARED_GROUP = "`def %<name>s` is not referenced anywhere in this shared example group. " \
                                   "Remove it or reference it in an example."
+        ANONYMOUS_SUBJECT_MSG_IN_SHARED_GROUP =
+          "`%<helper>s` is not referenced anywhere in this shared example group. " \
+          "Remove it or reference it in an example."
 
         # @rbs!
         #   type cache_key = [ Time, Integer ]
@@ -340,7 +386,7 @@ module RuboCop
         # @rbs scope: Scope
         # @rbs ancestors: Array[Scope]
         def mark_downward(scope, ancestors) #: void
-          scope.defs.each do |_, name, _|
+          scope.defined_names.each do |name|
             scope.mark_referenced(name) if ancestors.any? { _1.refs.include?(name) }
           end
         end
@@ -402,30 +448,43 @@ module RuboCop
         # @rbs scope: Scope
         # @rbs in_shared_group: bool
         def report(scope, in_shared_group:) #: void
-          scope.unreferenced_defs.each do |helper, name, let_node|
-            next if helper == :let! && !cop_config["CheckLetBang"]
+          scope.unreferenced_defs.each do |definition|
+            next if definition.bang? && !cop_config["CheckLetBang"]
+            next if definition.subject? && !cop_config["CheckSubject"]
 
-            add_offense_for(let_node, helper, name, in_shared_group: in_shared_group)
+            add_offense_for(definition, in_shared_group: in_shared_group)
           end
         end
 
-        # @rbs let_node: RuboCop::AST::Node
-        # @rbs helper: Symbol
-        # @rbs name: Symbol
+        # @rbs definition: Scope::Definition
         # @rbs in_shared_group: bool
-        def add_offense_for(let_node, helper, name, in_shared_group:) #: void
-          node = let_node #: untyped
-          if node.def_type?
-            highlight = node.loc.keyword.join(node.loc.name)
-            message = format(in_shared_group ? DEF_MSG_IN_SHARED_GROUP : DEF_MSG, name: name)
-          else
-            highlight = node.block_type? ? node.send_node : node
-            message = format(in_shared_group ? MSG_IN_SHARED_GROUP : MSG, helper: helper, name: name)
-          end
+        def add_offense_for(definition, in_shared_group:) #: void
+          node = definition.node #: untyped
+          message = message_for(definition, in_shared_group: in_shared_group)
+          highlight =
+            if definition.def_helper?
+              node.loc.keyword.join(node.loc.name)
+            else
+              node.block_type? ? node.send_node : node
+            end
           add_offense(highlight, message: message) do |corrector|
             corrector.remove(
               range_by_whole_lines(node.source_range, include_final_newline: true)
             )
+          end
+        end
+
+        # @rbs definition: Scope::Definition
+        # @rbs in_shared_group: bool
+        def message_for(definition, in_shared_group:) #: String
+          helper = definition.helper
+          name = definition.name
+          if definition.def_helper?
+            format(in_shared_group ? DEF_MSG_IN_SHARED_GROUP : DEF_MSG, name: name)
+          elsif definition.anonymous?
+            format(in_shared_group ? ANONYMOUS_SUBJECT_MSG_IN_SHARED_GROUP : ANONYMOUS_SUBJECT_MSG, helper: helper)
+          else
+            format(in_shared_group ? MSG_IN_SHARED_GROUP : MSG, helper: helper, name: name)
           end
         end
       end

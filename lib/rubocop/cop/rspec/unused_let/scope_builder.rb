@@ -134,11 +134,29 @@ module RuboCop
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           def collect_definitions(node, scope) #: void
-            RuboCop::RSpec::ExampleGroup.new(node).lets.each do |let|
+            group = RuboCop::RSpec::ExampleGroup.new(node)
+            group.lets.each do |let|
               helper, name = let_definition(let)
               scope.add_definition(helper, name.to_sym, let) if helper && name
             end
+            collect_subject_definitions(group, scope)
             collect_method_definitions(node, scope)
+          end
+
+          # A `subject` is a `let` that additionally answers to the implicit
+          # name `subject` (see {References::SUBJECT_ALIASES}), recorded as its
+          # alias. An anonymous `subject { }` has no other name, so that alias
+          # is the only way to reach it.
+          #
+          # @rbs group: RuboCop::RSpec::ExampleGroup
+          # @rbs scope: Scope
+          def collect_subject_definitions(group, scope) #: void
+            group.subjects.each do |subject_node|
+              helper, name = subject_definition(subject_node)
+              next unless helper
+
+              scope.add_definition(helper, name, subject_node, alias_name: :subject)
+            end
           end
 
           # `def foo` at an example group's level becomes an instance method on
@@ -159,6 +177,10 @@ module RuboCop
           # definitions, whose references belong to `refs`. Resolves a shared
           # inclusion found along the way.
           #
+          # A subject in a form `helper_nodes` misses (`subject { _1 }`,
+          # `subject(:x, &blk)`) reaches this walk, so its declaring call is
+          # left out of the references here too.
+          #
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           # @rbs helpers: Array[RuboCop::AST::Node]
@@ -166,7 +188,7 @@ module RuboCop
             node.each_child_node do |child|
               next if spec_group?(child) || helpers.any? { _1.equal?(child) }
 
-              references_in(child).each { scope.add_reference_in_example(_1) }
+              references_in(child).each { scope.add_reference_in_example(_1) } unless subject_definition_head?(child)
               record_inclusion(child, scope) if inclusion_call?(child)
               collect_example_references(child, scope, helpers)
             end
@@ -221,7 +243,7 @@ module RuboCop
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           def record_helper_references(node, scope) #: void
-            references_in(node).each { scope.add_reference(_1) }
+            references_in(node).each { scope.add_reference(_1) } unless subject_definition_head?(node)
             node.each_child_node { record_helper_references(_1, scope) }
           end
 

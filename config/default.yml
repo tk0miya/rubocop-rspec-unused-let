@@ -1,9 +1,10 @@
 ---
 RSpec/UnusedLet:
-  Description: Checks for `let` definitions and helper methods that are never referenced.
+  Description: Checks for `let`/`subject` definitions and helper methods that are never referenced.
   Enabled: true
   SafeAutoCorrect: false
   CheckLetBang: true
+  CheckSubject: true
   CheckHelperSpecs: false
   CheckSharedExamples: true
   SharedExamplePaths:
