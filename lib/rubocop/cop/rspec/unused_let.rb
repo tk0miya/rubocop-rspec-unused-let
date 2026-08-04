@@ -15,30 +15,18 @@ module RuboCop
       # referenced.
       #
       # A `let` (or `let!`) whose name is never used within its scope is dead
-      # code that makes specs harder to read. This cop flags such definitions.
-      # A helper method (`def`) written at an example group's level becomes an
-      # instance method on the group's example class, so it is checked the same
-      # way. A `subject` (or `subject!`) is checked too: it answers both to its
-      # own name, when it has one, and to the implicit name `subject`, which
-      # `is_expected`, `are_expected`, `should`, `should_not` and rspec-its'
-      # `its` reach.
-      # Dynamic references count as usages too: a call to `send`, `public_send`,
-      # `__send__`, `method` or `respond_to?` with a literal name (e.g.
-      # `send(:foo)`) references the `let` or method it names.
+      # code that makes specs harder to read. A `subject` (or `subject!`) and a
+      # helper method (`def`) written at an example group's level are checked
+      # the same way, the latter because it becomes an instance method on the
+      # group's example class.
       #
-      # Because RuboCop analyzes one file at a time, the cop stays silent
-      # wherever it cannot see every possible reference: `let`s inside a
-      # `shared_examples`/`shared_context` block that carries no examples (a
-      # provider, whose `let`s exist for the including group), `let`s visible at
-      # an inclusion whose shared block it cannot find, `let`s a well-known
-      # gem's shared context consumes implicitly (recognized by the group's
-      # `type:` metadata), and helper specs. Where it can see the shared block,
-      # only the `let`s that block references are treated as used and the rest
-      # stay checked. `SharedExamplePaths` lists the files it pre-loads to see
-      # blocks defined elsewhere, and defaults to `spec/support/**/*.rb` — the
-      # glob rspec-rails offers for requiring support files. See
+      # A `let` that a shared example or context consumes counts as used when
+      # the inclusion is in reach: the shared block has to be visible in the
+      # same file, or be a top-level block in a file listed in
+      # `SharedExamplePaths` (default `spec/support/**/*.rb`). Otherwise every
+      # `let` visible at that inclusion is left alone. See
       # {https://github.com/tk0miya/rubocop-rspec-unused-let#readme the README}
-      # for the exact rules and their known limitations.
+      # for the full rules and their known limitations.
       #
       # @example
       #   # bad
@@ -56,89 +44,35 @@ module RuboCop
       #     it { expect(used).to eq(1) }
       #   end
       #
-      # @example a helper method
-      #   # bad
+      #   # bad - a subject and a helper method are checked the same way
       #   describe Foo do
+      #     subject(:widget) { described_class.new }
+      #
       #     def unused
       #       1
       #     end
       #
-      #     it { expect(true).to be(true) }
+      #     it { expect(Foo.count).to eq(0) }
       #   end
       #
       #   # good
       #   describe Foo do
-      #     def used
+      #     subject(:widget) { described_class.new }
+      #
+      #     def expected_size
       #       1
       #     end
       #
-      #     it { expect(used).to eq(1) }
-      #   end
-      #
-      # @example a subject
-      #   # bad
-      #   describe Foo do
-      #     subject { described_class.new }
-      #
-      #     it { expect(Foo.count).to eq(0) }
-      #   end
-      #
-      #   # good - the one-liner syntax references the subject
-      #   describe Foo do
-      #     subject { described_class.new }
-      #
       #     it { is_expected.to be_valid }
-      #   end
-      #
-      #   # good - a named subject may be referenced by either name
-      #   describe Foo do
-      #     subject(:widget) { described_class.new }
-      #
-      #     it { expect(widget).to be_valid }
-      #   end
-      #
-      # @example a same-named `let` in the including group
-      #   RSpec.shared_examples "uses size" do
-      #     let(:size) { 1 }
-      #     it { expect(size).to be_positive }
-      #   end
-      #
-      #   # good - `include_examples` injects the block here, so this `let` is
-      #   # the override it uses
-      #   describe Foo do
-      #     include_examples "uses size"
-      #     let(:size) { 2 }
-      #   end
-      #
-      #   # bad - `it_behaves_like` runs the block in its own group, which uses
-      #   # its own `let(:size)`
-      #   describe Bar do
-      #     it_behaves_like "uses size"
-      #     let(:size) { 2 }
-      #   end
-      #
-      # @example CheckLetBang: true (default)
-      #   # bad - applies to `subject!` as well as `let!`
-      #   describe Foo do
-      #     let!(:widget) { create(:widget) }
-      #
-      #     it { expect(Widget.count).to eq(1) }
+      #     it { expect(widget.size).to eq(expected_size) }
       #   end
       #
       # @example CheckLetBang: false
-      #   # good - `let!` is assumed to be used for its side effects
+      #   # good - `let!`/`subject!` is assumed to be used for its side effects
       #   describe Foo do
       #     let!(:widget) { create(:widget) }
       #
       #     it { expect(Widget.count).to eq(1) }
-      #   end
-      #
-      # @example CheckSubject: true (default)
-      #   # bad
-      #   describe Foo do
-      #     subject(:widget) { described_class.new }
-      #
-      #     it { expect(Foo.count).to eq(0) }
       #   end
       #
       # @example CheckSubject: false
@@ -149,36 +83,13 @@ module RuboCop
       #     it { expect(Foo.count).to eq(0) }
       #   end
       #
-      # @example CheckHelperSpecs: false (default)
-      #   # good - a helper spec's `let`s may be referenced by the auto-included
-      #   # module's methods, so they are not flagged
-      #   describe MyHelper, type: :helper do
-      #     let(:current_user) { User.new }
-      #
-      #     it { expect(helper.greeting).to eq("Hi") }
-      #   end
-      #
       # @example CheckHelperSpecs: true
-      #   # bad - helper specs are checked like any other group
+      #   # bad - a helper spec, left alone by default, is checked like any
+      #   # other group
       #   describe MyHelper, type: :helper do
       #     let(:unused) { 1 }
       #
       #     it { expect(helper.greeting).to eq("Hi") }
-      #   end
-      #
-      # @example CheckSharedExamples: true (default)
-      #   # bad - the block carries examples, so it is meant to be run rather
-      #   # than to supply `let`s to its includer, and is checked like any group
-      #   RSpec.shared_examples "a thing" do
-      #     let(:unused) { 1 }
-      #
-      #     it { expect(value).to eq(1) }
-      #   end
-      #
-      #   # good - no examples, so the block is a provider pulled in with
-      #   # `include_context` and its `let`s stay unchecked
-      #   RSpec.shared_context "with a thing" do
-      #     let(:provided) { 1 }
       #   end
       #
       # @example CheckSharedExamples: false
@@ -187,7 +98,7 @@ module RuboCop
       #   RSpec.shared_examples "a thing" do
       #     let(:unused) { 1 }
       #
-      #     it { expect(value).to eq(1) }
+      #     it { expect(Foo.count).to eq(1) }
       #   end
       #
       # @safety
