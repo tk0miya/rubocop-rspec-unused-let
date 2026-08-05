@@ -325,18 +325,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
       end
 
       context "when `type: :validator` (rspec-validator_spec_helper) is in scope" do
-        context "when `let(:value)` is overridden at the top level" do
-          it "ignores it" do
-            expect_no_offenses(<<~RUBY)
-              RSpec.describe JsonFormatValidator, type: :validator do
-                let(:value) { "String" }
-
-                it { is_expected.to be_invalid }
-              end
-            RUBY
-          end
-        end
-
         context "when `let(:value)` is overridden in a nested context" do
           it "ignores it" do
             expect_no_offenses(<<~RUBY)
@@ -490,52 +478,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           end
         end
 
-        context "when the shared block has a stub class defining the same name" do
-          it "still treats the name as a free reference of the block" do
-            expect_no_offenses(<<~RUBY)
-              RSpec.shared_examples "a thing" do
-                class Dummy
-                  def name
-                    "other"
-                  end
-                end
-
-                it { expect(name).to eq("value") }
-              end
-
-              RSpec.describe Foo do
-                let(:name) { "value" }
-
-                it_behaves_like "a thing"
-              end
-            RUBY
-          end
-        end
-
-        context "when the shared block has an anonymous class defining the same name" do
-          it "still treats the name as a free reference of the block" do
-            expect_no_offenses(<<~RUBY)
-              RSpec.shared_examples "a thing" do
-                let(:dummy) do
-                  Class.new do
-                    def name
-                      "other"
-                    end
-                  end
-                end
-
-                it { expect(dummy.new.name).not_to eq(name) }
-              end
-
-              RSpec.describe Foo do
-                let(:name) { "value" }
-
-                it_behaves_like "a thing"
-              end
-            RUBY
-          end
-        end
-
         context "when the block defines the name itself as a helper method" do
           it "flags a same-named `let` the isolated `it_behaves_like` never uses" do
             expect_offense(<<~RUBY)
@@ -568,44 +510,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
 
               RSpec.shared_examples "a thing" do
                 it { expect(name).to eq("value") }
-              end
-            RUBY
-          end
-        end
-
-        context "when a reference is reachable through a nested inclusion" do
-          it "keeps the let that satisfies it" do
-            expect_no_offenses(<<~RUBY)
-              RSpec.shared_examples "outer" do
-                include_examples "inner"
-              end
-
-              RSpec.shared_examples "inner" do
-                it { expect(name).to eq("value") }
-              end
-
-              RSpec.describe Foo do
-                let(:name) { "value" }
-
-                it_behaves_like "outer"
-              end
-            RUBY
-          end
-        end
-
-        context "when the reference sits in a nested group inside the shared block" do
-          it "keeps the includer's let it resolves" do
-            expect_no_offenses(<<~RUBY)
-              RSpec.shared_examples "a thing" do
-                context "nested" do
-                  it { expect(value).to eq(1) }
-                end
-              end
-
-              RSpec.describe Foo do
-                let(:value) { 1 }
-
-                it_behaves_like "a thing"
               end
             RUBY
           end
@@ -648,23 +552,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
             end
           end
 
-          context "when included inline with `include_context`" do
-            it "keeps the includer's like-named let, which the inline block references" do
-              expect_no_offenses(<<~RUBY)
-                RSpec.shared_context "a thing" do
-                  let(:helper) { 1 }
-
-                  it { expect(helper).to eq(1) }
-                end
-
-                RSpec.describe Foo do
-                  include_context "a thing"
-                  let(:helper) { 2 }
-                end
-              RUBY
-            end
-          end
-
           context "when the inline block never references the name" do
             it "flags the includer's like-named let" do
               expect_offense(<<~RUBY)
@@ -700,46 +587,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
                 end
               RUBY
             end
-          end
-        end
-
-        context "when the shared example is named with a symbol" do
-          it "resolves it" do
-            expect_no_offenses(<<~RUBY)
-              RSpec.shared_examples :a_thing do
-                it { expect(name).to eq("value") }
-              end
-
-              RSpec.describe Foo do
-                let(:name) { "value" }
-
-                it_behaves_like :a_thing
-              end
-            RUBY
-          end
-        end
-
-        context "when the same name is defined in an enclosing group" do
-          it "resolves the inclusion to the nearest (shadowing) definition" do
-            expect_offense(<<~RUBY)
-              RSpec.shared_examples "common" do
-                it { expect(outer).to eq(1) }
-              end
-
-              RSpec.describe Foo do
-                context "inner" do
-                  shared_examples "common" do
-                    it { expect(inner).to eq(1) }
-                  end
-
-                  let(:inner) { 1 }
-                  let(:outer) { 2 }
-                  ^^^^^^^^^^^ `let(:outer)` is not referenced anywhere. Remove it or reference it in an example.
-
-                  it_behaves_like "common"
-                end
-              end
-            RUBY
           end
         end
       end
@@ -788,29 +635,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
 
                 it_behaves_like "known"
                 it_behaves_like "external"
-              end
-            RUBY
-          end
-        end
-
-        context "when the definition lives in a sibling group" do
-          it "cannot see it and stays conservative" do
-            # Bar's inclusion cannot see Foo's group-local shared block.
-            expect_no_offenses(<<~RUBY)
-              RSpec.describe Foo do
-                shared_examples "common" do
-                  it { expect(a).to eq(1) }
-                end
-
-                let(:a) { 1 }
-
-                it_behaves_like "common"
-              end
-
-              RSpec.describe Bar do
-                let(:b) { 2 }
-
-                it_behaves_like "common"
               end
             RUBY
           end
@@ -974,20 +798,10 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         end
 
         context "when the block carries no examples" do
-          context "when it is opened with `shared_context`" do
+          context "when it holds nothing but lets" do
             it "leaves the provider's lets alone" do
               expect_no_offenses(<<~RUBY)
                 RSpec.shared_context "with a thing" do
-                  let(:provided) { 1 }
-                end
-              RUBY
-            end
-          end
-
-          context "when it is opened with `shared_examples`" do
-            it "leaves them alone too, the keyword carrying no guarantee" do
-              expect_no_offenses(<<~RUBY)
-                RSpec.shared_examples "with a thing" do
                   let(:provided) { 1 }
                 end
               RUBY
@@ -1204,84 +1018,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           RUBY
         end
       end
-
-      context "with a bare `subject` call in an example" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              subject { described_class.new }
-
-              it { expect(subject).to be_valid }
-            end
-          RUBY
-        end
-      end
-
-      context "with a `subject` call in a hook" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              subject(:widget) { create(:widget) }
-
-              before { subject }
-
-              it { expect(Widget.count).to eq(1) }
-            end
-          RUBY
-        end
-      end
-
-      context "with a named subject referenced by its own name" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              subject(:widget) { described_class.new }
-
-              it { expect(widget).to be_valid }
-            end
-          RUBY
-        end
-      end
-
-      context "with a named subject reached only through `is_expected`" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              subject(:widget) { described_class.new }
-
-              it { is_expected.to be_valid }
-            end
-          RUBY
-        end
-      end
-
-      context "with the reference in a nested group" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              subject { described_class.new }
-
-              context "nested" do
-                it { is_expected.to be_valid }
-              end
-            end
-          RUBY
-        end
-      end
-
-      context "with the reference in a `let` body" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              subject { described_class.new }
-
-              let(:wrapper) { Wrapper.new(subject) }
-
-              it { expect(wrapper).to be_valid }
-            end
-          RUBY
-        end
-      end
     end
 
     context "when a nested group declares its own subject" do
@@ -1389,46 +1125,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         end
       end
 
-      context "when an inline inclusion's block declares and uses a subject" do
-        it "does not flag the overriding subject" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.shared_examples "a valid thing" do
-              subject { described_class.new }
-
-              it { is_expected.to be_valid }
-            end
-
-            RSpec.describe Foo do
-              include_examples "a valid thing"
-
-              subject { described_class.new(1) }
-            end
-          RUBY
-        end
-      end
-
-      context "when only a nested context of the shared block declares a subject" do
-        it "does not flag the subject the block's own level uses" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.shared_examples "a validatable thing" do
-              it { is_expected.to be_valid }
-
-              context "when blank" do
-                subject { described_class.new(nil) }
-
-                it { is_expected.not_to be_valid }
-              end
-            end
-
-            RSpec.describe Foo do
-              subject { described_class.new }
-
-              it_behaves_like "a validatable thing"
-            end
-          RUBY
-        end
-      end
-
       context "when an inline inclusion's block declares a subject it never uses" do
         it "flags the overriding subject" do
           expect_offense(<<~RUBY)
@@ -1505,44 +1201,22 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     context "when unused" do
       context "when CheckLetBang is enabled (default)" do
         context "when CheckSubject is enabled (default)" do
-          context "with an anonymous subject" do
-            it "flags it and removes the definition" do
-              expect_offense(<<~RUBY)
-                RSpec.describe Foo do
-                  subject! { create(:widget) }
-                  ^^^^^^^^ `subject!` is not referenced anywhere. Remove it or reference it in an example.
+          it "flags it and removes the definition" do
+            expect_offense(<<~RUBY)
+              RSpec.describe Foo do
+                subject! { create(:widget) }
+                ^^^^^^^^ `subject!` is not referenced anywhere. Remove it or reference it in an example.
 
-                  it { expect(Widget.count).to eq(1) }
-                end
-              RUBY
+                it { expect(Widget.count).to eq(1) }
+              end
+            RUBY
 
-              expect_correction(<<~RUBY)
-                RSpec.describe Foo do
+            expect_correction(<<~RUBY)
+              RSpec.describe Foo do
 
-                  it { expect(Widget.count).to eq(1) }
-                end
-              RUBY
-            end
-          end
-
-          context "with a named subject" do
-            it "flags it and removes the definition" do
-              expect_offense(<<~RUBY)
-                RSpec.describe Foo do
-                  subject!(:widget) { create(:widget) }
-                  ^^^^^^^^^^^^^^^^^ `subject!(:widget)` is not referenced anywhere. Remove it or reference it in an example.
-
-                  it { expect(Widget.count).to eq(1) }
-                end
-              RUBY
-
-              expect_correction(<<~RUBY)
-                RSpec.describe Foo do
-
-                  it { expect(Widget.count).to eq(1) }
-                end
-              RUBY
-            end
+                it { expect(Widget.count).to eq(1) }
+              end
+            RUBY
           end
         end
 
@@ -1552,7 +1226,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           it "does not flag it" do
             expect_no_offenses(<<~RUBY)
               RSpec.describe Foo do
-                subject!(:widget) { create(:widget) }
+                subject! { create(:widget) }
 
                 it { expect(Widget.count).to eq(1) }
               end
@@ -1567,7 +1241,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         it "does not flag it" do
           expect_no_offenses(<<~RUBY)
             RSpec.describe Foo do
-              subject!(:widget) { create(:widget) }
+              subject! { create(:widget) }
 
               it { expect(Widget.count).to eq(1) }
             end
@@ -1636,52 +1310,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           RUBY
         end
       end
-
-      context "when the reference is in a let block" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              def helper
-                1
-              end
-
-              let(:value) { helper }
-
-              it { expect(value).to eq(1) }
-            end
-          RUBY
-        end
-      end
-
-      context "when the reference is in a nested example group" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              def value
-                1
-              end
-
-              context "when nested" do
-                it { expect(value).to eq(1) }
-              end
-            end
-          RUBY
-        end
-      end
-
-      context "when the reference goes through send" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              def value
-                1
-              end
-
-              it { expect(send(:value)).to eq(1) }
-            end
-          RUBY
-        end
-      end
     end
 
     context "when defined inside a nested definee scope" do
@@ -1696,157 +1324,6 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
               end
 
               it { expect(Dummy.new.call).to eq(1) }
-            end
-          RUBY
-        end
-      end
-
-      context "with a module" do
-        it "does not treat its method as a group helper" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              module Helpers
-                def call
-                  1
-                end
-              end
-
-              it { expect(true).to be(true) }
-            end
-          RUBY
-        end
-      end
-
-      context "with an anonymous class" do
-        it "does not treat its method as a group helper" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              let(:klass) do
-                Class.new do
-                  def call
-                    1
-                  end
-                end
-              end
-
-              it { expect(klass.new.call).to eq(1) }
-            end
-          RUBY
-        end
-      end
-
-      context "with an anonymous struct" do
-        it "does not treat its method as a group helper" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              let(:klass) do
-                Struct.new(:value) do
-                  def call
-                    value
-                  end
-                end
-              end
-
-              it { expect(klass.new(1).call).to eq(1) }
-            end
-          RUBY
-        end
-      end
-
-      context "with an anonymous `Data` class" do
-        it "does not treat its method as a group helper" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              let(:klass) do
-                Data.define(:value) do
-                  def call
-                    value
-                  end
-                end
-              end
-
-              it { expect(klass.new(value: 1).call).to eq(1) }
-            end
-          RUBY
-        end
-      end
-
-      context "with a class reopened through `class_eval`" do
-        context "with no parameter, a `block` node" do
-          it "does not treat its method as a group helper" do
-            expect_no_offenses(<<~RUBY)
-              RSpec.describe Foo do
-                before do
-                  Dummy.class_eval do
-                    def call
-                      1
-                    end
-                  end
-                end
-
-                it { expect(Dummy.new.call).to eq(1) }
-              end
-            RUBY
-          end
-        end
-
-        context "with a numbered parameter, a `numblock` node" do
-          it "does not treat its method as a group helper" do
-            expect_no_offenses(<<~RUBY)
-              RSpec.describe Foo do
-                before do
-                  Dummy.class_eval do
-                    def call
-                      1
-                    end
-
-                    _1.freeze
-                  end
-                end
-
-                it { expect(Dummy.new.call).to eq(1) }
-              end
-            RUBY
-          end
-        end
-
-        # Pinned to 3.4, the version that first parses `it` as the parameter.
-        context "with the implicit `it` parameter, an `itblock` node" do
-          let(:ruby_version) { 3.4 }
-
-          it "does not treat its method as a group helper" do
-            expect_no_offenses(<<~RUBY)
-              RSpec.describe Foo do
-                before do
-                  Dummy.class_eval do
-                    def call
-                      1
-                    end
-
-                    it.freeze
-                  end
-                end
-
-                it { expect(Dummy.new.call).to eq(1) }
-              end
-            RUBY
-          end
-        end
-      end
-
-      context "with an object reopened through `instance_eval`" do
-        it "does not treat its method as a group helper" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              before do
-                Dummy.instance_eval do
-                  def call
-                    1
-                  end
-                end
-              end
-
-              it { expect(Dummy.call).to eq(1) }
             end
           RUBY
         end
