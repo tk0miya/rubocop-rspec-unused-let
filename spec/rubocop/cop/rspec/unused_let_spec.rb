@@ -1328,6 +1328,40 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
           RUBY
         end
       end
+
+      context "with rspec-rails' anonymous controller" do
+        it "does not treat its method as a group helper" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              controller do
+                def index
+                  head :no_content
+                end
+              end
+
+              it { expect(response).to be_successful }
+            end
+          RUBY
+        end
+      end
+
+      context "with a block of a DSL the cop knows nothing about" do
+        it "does not treat its method as a group helper" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              with_model :Blog do
+                model do
+                  def title_upcased
+                    title.upcase
+                  end
+                end
+              end
+
+              it { expect(Blog.new(title: "a").title_upcased).to eq("A") }
+            end
+          RUBY
+        end
+      end
     end
 
     context "when defined inside a shared example block" do

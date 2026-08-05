@@ -118,6 +118,28 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::SharedExampleRegistry do
       it { is_expected.not_to include(:value) }
     end
 
+    context "when a nested group inside the shared block defines the name as a helper method" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          context "nested" do
+            def value
+              1
+            end
+
+            it { expect(value).to eq(1) }
+          end
+        end
+
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it "still counts it, the block's whole subtree gathered flat as its `let`s are" do
+        expect(subject).not_to include(:value)
+      end
+    end
+
     context "when only a class body inside the shared block defines the name" do
       let(:source) { <<~RUBY }
         RSpec.shared_examples "a thing" do
