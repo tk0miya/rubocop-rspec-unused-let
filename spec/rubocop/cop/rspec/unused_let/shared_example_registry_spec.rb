@@ -100,6 +100,46 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::SharedExampleRegistry do
       it { is_expected.not_to include(:value) }
     end
 
+    context "when the shared block defines the name as a helper method" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          def value
+            1
+          end
+
+          it { expect(value).to eq(1) }
+        end
+
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it { is_expected.not_to include(:value) }
+    end
+
+    context "when only a class body inside the shared block defines the name" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          class Dummy
+            def value
+              1
+            end
+          end
+
+          it { expect(value).to eq(1) }
+        end
+
+        RSpec.describe Foo do
+          it_behaves_like "a thing"
+        end
+      RUBY
+
+      it "still consumes the name, the method belonging to the class" do
+        expect(subject).to include(:value)
+      end
+    end
+
     context "with a symbol-named shared block" do
       let(:name) { :a_thing }
       let(:source) { <<~RUBY }
@@ -504,6 +544,22 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::SharedExampleRegistry do
       RUBY
 
       it { is_expected.to contain_exactly(:helper) }
+    end
+
+    context "when the block declares and uses its own subject" do
+      let(:source) { <<~RUBY }
+        RSpec.shared_examples "a thing" do
+          subject { described_class.new }
+
+          it { is_expected.to be_valid }
+        end
+
+        RSpec.describe Foo do
+          include_examples "a thing"
+        end
+      RUBY
+
+      it { is_expected.to contain_exactly(:subject) }
     end
 
     context "when the block defines a name but never references it" do

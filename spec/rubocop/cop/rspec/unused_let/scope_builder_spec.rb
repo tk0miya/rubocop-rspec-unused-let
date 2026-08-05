@@ -4,12 +4,13 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
   include_context "with UnusedLet AST helpers"
 
   describe "#build_from" do
-    subject { described_class.new(nil, registry).build_from(group_named(root, "target")) }
+    subject { described_class.new(spec_filename, registry).build_from(group_named(root, "target")) }
 
     # Build the registry from the same parse the group comes from, so node
     # identity lines up when an inclusion is resolved.
     let(:root) { parse(source, ruby_version) }
     let(:ruby_version) { RUBY_VERSION.to_f }
+    let(:spec_filename) { nil }
     let(:registry) { RuboCop::Cop::RSpec::UnusedLet::SharedExampleRegistry.new(root) }
 
     context "when the group is a describe block" do
@@ -302,6 +303,54 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
       end
     end
 
+    context "with a `def` helper at the group's level" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          def call
+            1
+          end
+        end
+      RUBY
+
+      it "records it, the method becoming one on the group's example class" do
+        expect(subject.defs).to contain_exactly(have_attributes(helper: :def, name: :call))
+      end
+    end
+
+    context "with a `def` inside an anonymous class a `let` builds" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          let(:klass) do
+            Class.new do
+              def call
+                1
+              end
+            end
+          end
+        end
+      RUBY
+
+      it "records only the `let`, the method belonging to the inner definee" do
+        expect(subject.defs).to contain_exactly(have_attributes(helper: :let, name: :klass))
+      end
+    end
+
+    context "with a `def` inside a nested group" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          context "nested" do
+            def call
+              1
+            end
+          end
+        end
+      RUBY
+
+      it "leaves the definition to the nested group's own scope" do
+        expect(subject.defs).to be_empty
+      end
+    end
+
     context "when the name is called directly in an example" do
       let(:source) { <<~RUBY }
         describe "target" do
@@ -351,6 +400,33 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
 
       it "leaves the reference to the nested group's own scope" do
         expect(subject.refs_in_example).not_to include(:value)
+      end
+    end
+
+    context "when an example calls `subject` directly" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          subject { described_class.new }
+
+          it { expect(subject).to be_valid }
+        end
+      RUBY
+
+      it "records it as an example reference" do
+        expect(subject.refs_in_example).to include(:subject)
+      end
+    end
+
+    # No declaration here, so the hook is the only possible source of the reference.
+    context "when a hook calls `subject` directly" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          before { subject }
+        end
+      RUBY
+
+      it "records it as a helper reference" do
+        expect(subject.refs).to include(:subject)
       end
     end
 
@@ -520,6 +596,44 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
 
       it "injects nothing" do
         expect(subject.refs_in_example).not_to include(:value)
+      end
+    end
+
+    context "when the spec file sits under `spec/helpers`" do
+      let(:spec_filename) { "spec/helpers/my_helper_spec.rb" }
+
+      context "when the group carries no explicit `type:`" do
+        let(:source) { <<~RUBY }
+          describe "target" do
+          end
+        RUBY
+
+        it "infers `type: :helper` from the location, as rspec-rails does" do
+          expect(subject.type).to eq(:helper)
+        end
+      end
+
+      context "when the group carries an explicit `type:`" do
+        let(:source) { <<~RUBY }
+          describe "target", type: :model do
+          end
+        RUBY
+
+        it "prefers the explicit type over the inferred one" do
+          expect(subject.type).to eq(:model)
+        end
+      end
+    end
+
+    context "when the spec file sits outside `spec/helpers`" do
+      let(:spec_filename) { "spec/models/my_model_spec.rb" }
+      let(:source) { <<~RUBY }
+        describe "target" do
+        end
+      RUBY
+
+      it "infers no type" do
+        expect(subject.type).to be_nil
       end
     end
   end
