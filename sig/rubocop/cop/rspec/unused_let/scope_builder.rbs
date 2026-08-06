@@ -17,12 +17,6 @@ module RuboCop
           # rspec-rails infers `type: :helper` for spec files under `spec/helpers`.
           HELPER_SPEC_PATH: untyped
 
-          # Every node type whose body holds code at a remove from the group it
-          # is written in, hiding an example selector from {#example_of?}.
-          # Anything that opens a new definee qualifies: code that does not run
-          # in the group's own scope cannot be defining one of its examples.
-          ENCLOSING_BODY_TYPES: untyped
-
           # `let` names that well-known gems' shared contexts implicitly
           # reference, hidden from single-file analysis, keyed by the `type:`
           # metadata that pulls the shared context in. When a group carries a
@@ -45,33 +39,6 @@ module RuboCop
           attr_reader spec_filename: String?
 
           attr_reader registry: SharedExampleRegistry
-
-          # Whether `node` carries an example: one it would run itself, its
-          # nested example groups included. For a shared block this has to come
-          # from the contents, since the keyword that opened it says nothing:
-          # RSpec makes `shared_examples` and `shared_context` aliases.
-          #
-          # @rbs node: RuboCop::AST::Node
-          def carries_examples?: (RuboCop::AST::Node node) -> bool
-
-          # Whether `node` would run `example_send` as one of its own examples,
-          # rather than merely holding the name: only a nested example group and
-          # the example's own block may sit between the two.
-          #
-          # What tells the two roles of `skip`/`pending` apart is position: at a
-          # group's level the call defines a pending example, while inside any
-          # other body — a hook, an example, a `let`, a `def` helper — it acts on
-          # the example already running.
-          #
-          # @rbs example_send: RuboCop::AST::Node
-          # @rbs node: RuboCop::AST::Node
-          def example_of?: (RuboCop::AST::Node example_send, RuboCop::AST::Node node) -> bool
-
-          # Whether `candidate` is the example's own block, as in `it { ... }`.
-          #
-          # @rbs candidate: RuboCop::AST::Node
-          # @rbs example_send: RuboCop::AST::Node
-          def own_block_of?: (RuboCop::AST::Node candidate, RuboCop::AST::Node example_send) -> bool
 
           # A well-known gem's shared context (pulled in by `type:` metadata)
           # can reference `let` names that single-file analysis never sees.
