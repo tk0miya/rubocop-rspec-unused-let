@@ -508,6 +508,40 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
       end
     end
 
+    context "when a `def` inside a block the cop cannot name as RSpec's own references the name" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          with_model :Blog do
+            model do
+              def call_helper
+                value
+              end
+            end
+          end
+        end
+      RUBY
+
+      it "still records it as a helper reference, in case the block runs in the example's scope" do
+        expect(subject.refs).to include(:value)
+      end
+    end
+
+    context "when a `def` inside a `class` body written in the group references the name" do
+      let(:source) { <<~RUBY }
+        describe "target" do
+          class Dummy
+            def call_helper
+              value
+            end
+          end
+        end
+      RUBY
+
+      it "leaves the reference to the class body, which never runs in the example's scope" do
+        expect(subject.refs).not_to include(:value)
+      end
+    end
+
     %w[it_behaves_like it_should_behave_like include_context include_examples].each do |inclusion|
       context "when the group includes a shared example via #{inclusion}" do
         let(:source) { <<~RUBY }

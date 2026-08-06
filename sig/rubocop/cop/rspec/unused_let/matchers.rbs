@@ -15,6 +15,9 @@ module RuboCop
           # Node types that open a new method-definition scope by keyword.
           DEFINEE_SCOPE_TYPES: untyped
 
+          # Node types for a block literal, whatever form its parameters take.
+          BLOCK_TYPES: untyped
+
           # The helpers that declare a subject.
           SUBJECT_HELPERS: untyped
 
@@ -22,15 +25,23 @@ module RuboCop
           # effects alone.
           BANG_HELPERS: untyped
 
-          # Whether `node` opens a method-definition scope (a new
-          # `self`/definee) of its own, by keyword or as a block: a `def`
-          # nested inside one defines a method there, not an instance method on
-          # the surrounding example group's class.
+          # Whether `node` opens a method-definition scope (a new `self`/definee)
+          # other than the example group's, so that a `def` nested inside it
+          # defines a method there rather than an instance method on the group's
+          # example class: a `class`/`module`/`def` keyword, or a block other than
+          # a nested spec group (which collects its own `def`s separately) or one
+          # {#rspec_scope_block?} recognizes.
           #
           # @rbs node: RuboCop::AST::Node
           def definee_scope?: (RuboCop::AST::Node node) -> bool
 
-          def definee_block?: (RuboCop::AST::Node node) -> bool
+          # Whether `node` opens a definee by keyword, which leaves no doubt as
+          # to what a `def` inside it defines a method on.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def keyword_definee?: (RuboCop::AST::Node node) -> bool
+
+          def rspec_scope_block?: (RuboCop::AST::Node node) -> bool
 
           def example_group?: (RuboCop::AST::Node node) -> bool
 

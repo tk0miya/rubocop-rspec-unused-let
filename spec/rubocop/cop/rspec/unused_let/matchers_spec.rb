@@ -89,19 +89,55 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::Matchers do
       end
     end
 
-    # A non-match returns the node matcher's `nil` rather than `false`, so these
-    # assert falsiness rather than the exact value.
-    context "when the node opens no definee of its own" do
-      context "with a plain block" do
+    context "when the scope is opened by a block the cop cannot name as RSpec's own" do
+      context "with a plain iteration block" do
         let(:source) { <<~RUBY }
           [1, 2].each do |n|
-            n
+            def call
+              n
+            end
           end
         RUBY
 
-        it { is_expected.to be_falsey }
+        it { is_expected.to be(true) }
       end
 
+      context "with a same-named call on another receiver" do
+        let(:source) { <<~RUBY }
+          collection.new { 1 }
+        RUBY
+
+        it { is_expected.to be(true) }
+      end
+
+      context "with a receiverless `instance_eval`" do
+        let(:source) { <<~RUBY }
+          instance_eval do
+            def call
+              1
+            end
+          end
+        RUBY
+
+        it { is_expected.to be(true) }
+      end
+
+      context "with rspec-rails' `controller` block" do
+        let(:source) { <<~RUBY }
+          controller do
+            def index
+              1
+            end
+          end
+        RUBY
+
+        it { is_expected.to be(true) }
+      end
+    end
+
+    # A non-match returns the node matcher's `nil` rather than `false`, so these
+    # assert falsiness rather than the exact value.
+    context "when the node opens no definee of its own" do
       context "with an example group's block" do
         let(:source) { <<~RUBY }
           describe Foo do
@@ -120,29 +156,47 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::Matchers do
         it { is_expected.to be_falsey }
       end
 
+      context "with a `subject` block" do
+        let(:source) { <<~RUBY }
+          subject { 1 }
+        RUBY
+
+        it { is_expected.to be_falsey }
+      end
+
+      context "with a hook block" do
+        let(:source) { <<~RUBY }
+          before do
+            1
+          end
+        RUBY
+
+        it { is_expected.to be_falsey }
+      end
+
+      context "with an example block" do
+        let(:source) { <<~RUBY }
+          it "does something" do
+            1
+          end
+        RUBY
+
+        it { is_expected.to be_falsey }
+      end
+
+      context "with an inclusion's customization block" do
+        let(:source) { <<~RUBY }
+          it_behaves_like "a thing" do
+            1
+          end
+        RUBY
+
+        it { is_expected.to be_falsey }
+      end
+
       context "with a builder call carrying no block" do
         let(:source) { <<~RUBY }
           Class.new(StandardError)
-        RUBY
-
-        it { is_expected.to be_falsey }
-      end
-
-      context "with a same-named call on another receiver" do
-        let(:source) { <<~RUBY }
-          collection.new { 1 }
-        RUBY
-
-        it { is_expected.to be_falsey }
-      end
-
-      context "with a receiverless `instance_eval`" do
-        let(:source) { <<~RUBY }
-          instance_eval do
-            def call
-              1
-            end
-          end
         RUBY
 
         it { is_expected.to be_falsey }

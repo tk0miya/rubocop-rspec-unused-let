@@ -14,6 +14,9 @@ module RuboCop
           # Node types that open a new method-definition scope by keyword.
           DEFINEE_SCOPE_TYPES = %i[def defs class module sclass].freeze
 
+          # Node types for a block literal, whatever form its parameters take.
+          BLOCK_TYPES = %i[block numblock itblock].freeze
+
           # The helpers that declare a subject.
           SUBJECT_HELPERS = %i[subject subject!].freeze
 
@@ -21,18 +24,31 @@ module RuboCop
           # effects alone.
           BANG_HELPERS = %i[let! subject!].freeze
 
-          # Whether `node` opens a method-definition scope (a new
-          # `self`/definee) of its own, by keyword or as a block: a `def`
-          # nested inside one defines a method there, not an instance method on
-          # the surrounding example group's class.
+          # Whether `node` opens a method-definition scope (a new `self`/definee)
+          # other than the example group's, so that a `def` nested inside it
+          # defines a method there rather than an instance method on the group's
+          # example class: a `class`/`module`/`def` keyword, or a block other than
+          # a nested spec group (which collects its own `def`s separately) or one
+          # {#rspec_scope_block?} recognizes.
           #
           # @rbs node: RuboCop::AST::Node
           def definee_scope?(node) #: bool
-            DEFINEE_SCOPE_TYPES.include?(node.type) || definee_block?(node)
+            return true if keyword_definee?(node)
+            return false unless BLOCK_TYPES.include?(node.type)
+
+            !spec_group?(node) && !rspec_scope_block?(node)
+          end
+
+          # Whether `node` opens a definee by keyword, which leaves no doubt as
+          # to what a `def` inside it defines a method on.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def keyword_definee?(node) #: bool
+            DEFINEE_SCOPE_TYPES.include?(node.type)
           end
 
           # @rbs!
-          #   def definee_block?: (RuboCop::AST::Node node) -> bool
+          #   def rspec_scope_block?: (RuboCop::AST::Node node) -> bool
           #   def example_group?: (RuboCop::AST::Node node) -> bool
           #   def example_send?: (RuboCop::AST::Node node) -> bool
           #   def spec_group?: (RuboCop::AST::Node node) -> bool
@@ -44,17 +60,14 @@ module RuboCop
           #   def inclusion_name: (RuboCop::AST::Node node) -> (Symbol | String)?
           #   def nested_inclusion?: (RuboCop::AST::Node node) -> bool
 
-          # The blocks that run their body against a definee of their own: the
-          # anonymous class builders a spec uses for stub classes, and the
-          # `*_eval`/`*_exec` family, which defines methods on its receiver.
-          def_node_matcher :definee_block?, <<~PATTERN
+          # The blocks RSpec runs via `instance_exec` against the example or the
+          # group, so a `def` written in one lands on the same singleton class as
+          # a group-level helper: a hook, a `let`/`subject` body, an example, and
+          # an inclusion's customization block.
+          def_node_matcher :rspec_scope_block?, <<~PATTERN
             (any_block
-              {
-                (send (const {nil? cbase} {:Class :Module :Struct}) :new ...)
-                (send (const {nil? cbase} :Data) :define ...)
-                (send !nil? {:class_eval :module_eval :instance_eval
-                             :class_exec :module_exec :instance_exec} ...)
-              }
+              (send nil?
+                {#Hooks.all #Helpers.all #Subjects.all #Examples.all #Includes.all} ...)
               ...)
           PATTERN
 

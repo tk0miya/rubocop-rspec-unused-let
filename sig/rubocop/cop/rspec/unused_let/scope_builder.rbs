@@ -17,10 +17,6 @@ module RuboCop
           # rspec-rails infers `type: :helper` for spec files under `spec/helpers`.
           HELPER_SPEC_PATH: untyped
 
-          # The block node types: `{ |x| }` parses as `block`, `{ _1 }` as
-          # `numblock` and Ruby 3.4's `{ it }` as `itblock`.
-          BLOCK_TYPES: untyped
-
           # Every node type whose body holds code at a remove from the group it
           # is written in, hiding an example selector from {#example_of?}.
           # Anything that opens a new definee qualifies: code that does not run
@@ -144,8 +140,9 @@ module RuboCop
           # @rbs scope: Scope
           def mark_inline_bound_references: (Symbol | String name, RuboCop::AST::Node node, Scope scope) -> void
 
-          # The group's own `let`/`subject`/hook/`def` definitions, whose bodies
-          # run in the example's scope.
+          # The nodes whose bodies are read as running in the example's scope:
+          # the group's own `let`s, `subject`s and hooks, plus every `def` written
+          # in its region (see {#candidate_helpers_in}).
           #
           # @rbs node: RuboCop::AST::Node
           def helper_nodes: (RuboCop::AST::Node node) -> Array[RuboCop::AST::Node]
@@ -153,6 +150,15 @@ module RuboCop
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
           def record_helper_references: (RuboCop::AST::Node node, Scope scope) -> void
+
+          # The `def`s in `node`'s region that may turn out to be helpers of this
+          # group: every one no `class`/`module` body claims. Wider than
+          # {#method_definitions_in}: a `def` inside `Class.new`/`class_eval`/an
+          # unrecognized block still has its references read here, on the chance
+          # it runs in the example's scope after all.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def candidate_helpers_in: (RuboCop::AST::Node node) -> Array[RuboCop::AST::Node]
 
           # `def foo` written at an example group's level becomes an instance
           # method on the group's example class. Skip `def`s that belong
@@ -164,13 +170,15 @@ module RuboCop
           # @rbs node: RuboCop::AST::Node
           def method_definitions_in: (RuboCop::AST::Node node) -> Array[RuboCop::AST::Node]
 
-          # Whether `defn` defines an instance method on `group`'s example class:
-          # walking outward, `group` is reached before any nested spec group or
-          # inner definee scope that would claim it.
+          # Whether `defn` is written directly in `group`'s region: walking
+          # outward from it reaches `group` before a nested spec group (which
+          # collects the `def`s written in it on its own traversal) or a node
+          # `owned_by_other` calls true for, a boundary of its own.
           #
           # @rbs defn: RuboCop::AST::Node
           # @rbs group: RuboCop::AST::Node
-          def own_level_method?: (RuboCop::AST::Node defn, RuboCop::AST::Node group) -> bool
+          # @rbs &owned_by_other: (RuboCop::AST::Node) -> boolish
+          def defined_in?: (RuboCop::AST::Node defn, RuboCop::AST::Node group) { (RuboCop::AST::Node) -> boolish } -> bool
 
           # @rbs node: RuboCop::AST::Node
           def type_from_group: (RuboCop::AST::Node node) -> Symbol?

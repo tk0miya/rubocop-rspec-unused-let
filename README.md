@@ -90,6 +90,30 @@ RSpec.describe Foo do
 end
 ```
 
+A `def` is checked wherever RSpec runs it against the group: directly in the
+group, or in a hook, `let`/`subject` body, example, or a shared example's
+customization block. A `def` written inside a `class`/`module` definition, an
+anonymous class (`Class.new`), a `class_eval` block, or a third-party DSL's
+block — rspec-rails' `controller do ... end`, say — is left alone instead: it
+may define a method on something else entirely, and the cop has no way to tell
+which from the code alone:
+
+```ruby
+# good - this is the anonymous controller's action, not a group helper
+RSpec.describe ApplicationController, type: :controller do
+  controller do
+    def index
+      head :no_content
+    end
+  end
+
+  it "responds" do
+    get :index
+    expect(response).to be_successful
+  end
+end
+```
+
 ### Subjects
 
 A `subject` (or `subject!`) is checked with the same rules, with one addition:
@@ -369,6 +393,10 @@ end
   nested group references the implicit `subject`, since both definitions answer
   to the same name. The outer one may in fact be dead, so this errs toward a
   false negative rather than a false positive.
+- A `def` written inside a block RSpec is not known to evaluate — a DSL's block,
+  a plain `each` — goes unchecked, since what the method does with the block it
+  is handed cannot be told from the call site. The references its body makes are
+  still read, so a `let` it uses is not flagged either.
 
 ## Comparison with rspectre
 

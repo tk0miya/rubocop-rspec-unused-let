@@ -19,15 +19,11 @@ module RuboCop
           # rspec-rails infers `type: :helper` for spec files under `spec/helpers`.
           HELPER_SPEC_PATH = %r{(?:^|/)spec/helpers/}.freeze
 
-          # The block node types: `{ |x| }` parses as `block`, `{ _1 }` as
-          # `numblock` and Ruby 3.4's `{ it }` as `itblock`.
-          BLOCK_TYPES = %i[block numblock itblock].freeze
-
           # Every node type whose body holds code at a remove from the group it
           # is written in, hiding an example selector from {#example_of?}.
           # Anything that opens a new definee qualifies: code that does not run
           # in the group's own scope cannot be defining one of its examples.
-          ENCLOSING_BODY_TYPES = (BLOCK_TYPES + Matchers::DEFINEE_SCOPE_TYPES).freeze
+          ENCLOSING_BODY_TYPES = (Matchers::BLOCK_TYPES + Matchers::DEFINEE_SCOPE_TYPES).freeze
 
           # `let` names that well-known gems' shared contexts implicitly
           # reference, hidden from single-file analysis, keyed by the `type:`
@@ -107,7 +103,7 @@ module RuboCop
           # @rbs candidate: RuboCop::AST::Node
           # @rbs example_send: RuboCop::AST::Node
           def own_block_of?(candidate, example_send) #: bool
-            return false unless candidate.type?(*BLOCK_TYPES)
+            return false unless candidate.type?(*Matchers::BLOCK_TYPES)
 
             node = candidate #: untyped
             node.send_node.equal?(example_send)
@@ -228,8 +224,9 @@ module RuboCop
             registry.bound_references(name, node).each { scope.mark_referenced(_1) }
           end
 
-          # The group's own `let`/`subject`/hook/`def` definitions, whose bodies
-          # run in the example's scope.
+          # The nodes whose bodies are read as running in the example's scope:
+          # the group's own `let`s, `subject`s and hooks, plus every `def` written
+          # in its region (see {#candidate_helpers_in}).
           #
           # @rbs node: RuboCop::AST::Node
           def helper_nodes(node) #: Array[RuboCop::AST::Node]
@@ -237,7 +234,7 @@ module RuboCop
             group.lets +
               group.subjects +
               group.hooks.map(&:to_node) +
-              method_definitions_in(node)
+              candidate_helpers_in(node)
           end
 
           # @rbs node: RuboCop::AST::Node
@@ -245,6 +242,17 @@ module RuboCop
           def record_helper_references(node, scope) #: void
             references_in(node).each { scope.add_reference(_1) } unless subject_definition_head?(node)
             node.each_child_node { record_helper_references(_1, scope) }
+          end
+
+          # The `def`s in `node`'s region that may turn out to be helpers of this
+          # group: every one no `class`/`module` body claims. Wider than
+          # {#method_definitions_in}: a `def` inside `Class.new`/`class_eval`/an
+          # unrecognized block still has its references read here, on the chance
+          # it runs in the example's scope after all.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def candidate_helpers_in(node) #: Array[RuboCop::AST::Node]
+            node.each_descendant(:def).select { defined_in?(_1, node, &method(:keyword_definee?)) }
           end
 
           # `def foo` written at an example group's level becomes an instance
@@ -256,19 +264,21 @@ module RuboCop
           #
           # @rbs node: RuboCop::AST::Node
           def method_definitions_in(node) #: Array[RuboCop::AST::Node]
-            node.each_descendant(:def).select { own_level_method?(_1, node) }
+            node.each_descendant(:def).select { defined_in?(_1, node, &method(:definee_scope?)) }
           end
 
-          # Whether `defn` defines an instance method on `group`'s example class:
-          # walking outward, `group` is reached before any nested spec group or
-          # inner definee scope that would claim it.
+          # Whether `defn` is written directly in `group`'s region: walking
+          # outward from it reaches `group` before a nested spec group (which
+          # collects the `def`s written in it on its own traversal) or a node
+          # `owned_by_other` calls true for, a boundary of its own.
           #
           # @rbs defn: RuboCop::AST::Node
           # @rbs group: RuboCop::AST::Node
-          def own_level_method?(defn, group) #: bool
+          # @rbs &owned_by_other: (RuboCop::AST::Node) -> boolish
+          def defined_in?(defn, group, &owned_by_other) #: bool
             defn.each_ancestor do |ancestor|
               return true if ancestor.equal?(group)
-              return false if spec_group?(ancestor) || definee_scope?(ancestor)
+              return false if spec_group?(ancestor) || owned_by_other.call(ancestor)
             end
             false
           end
