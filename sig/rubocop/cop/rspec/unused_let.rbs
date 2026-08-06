@@ -110,6 +110,8 @@ module RuboCop
 
         include RangeHelp
 
+        include Matchers
+
         MSG: ::String
 
         DEF_MSG: ::String
