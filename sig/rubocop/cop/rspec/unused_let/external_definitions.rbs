@@ -1,0 +1,78 @@
+# Generated from lib/rubocop/cop/rspec/unused_let/external_definitions.rb with RBS::Inline
+
+module RuboCop
+  module Cop
+    module RSpec
+      class UnusedLet < ::RuboCop::Cop::RSpec::Base
+        # The `SharedExamplePaths` patterns resolved to file contents: the
+        # absolute paths they expand to, a result-cache checksum covering them,
+        # and their parsed definition maps for {SharedExampleRegistry}'s external
+        # fallback.
+        class ExternalDefinitions
+          type cache_key = [ Time, Integer ]
+
+          type cache_entry = [ cache_key, SharedExampleRegistry::definition_mapping? ]
+
+          self.@default_cache: Hash[String, cache_entry]?
+
+          # Process-wide cache of the external files' definition maps, keyed by
+          # absolute path to `[[mtime, size], definitions | nil]`. Used as the
+          # default so a support file shared by many specs is scanned once per
+          # process, not once per spec (RuboCop builds a fresh cop instance per
+          # inspected file).
+          def self.default_cache: () -> Hash[String, cache_entry]
+
+          # @rbs patterns: Array[String]
+          # @rbs base_dir: String
+          # @rbs target_ruby_version: Numeric
+          # @rbs cache: Hash[String, cache_entry]
+          def initialize: (patterns: Array[String], base_dir: String, target_ruby_version: Numeric, ?cache: Hash[String, cache_entry]) -> void
+
+          # The absolute paths the patterns expand to, in a stable order. Not
+          # cached on the instance: a `--server` process outlives a run, so a
+          # cached expansion would go on ignoring later additions.
+          def paths: () -> Array[String]
+
+          # The paths' digest for RuboCop's result-cache key, which otherwise
+          # covers no project file but the inspected one. `nil` when there is
+          # nothing to pre-load.
+          def checksum: () -> String?
+
+          # The paths' definition maps, excluding `excluding` so the file under
+          # investigation is never indexed twice.
+          #
+          # @rbs excluding: String?
+          def definitions: (excluding: String?) -> Array[SharedExampleRegistry::definition_mapping]
+
+          private
+
+          attr_reader patterns: Array[String]
+
+          attr_reader base_dir: String
+
+          attr_reader target_ruby_version: Numeric
+
+          attr_reader cache: Hash[String, cache_entry]
+
+          # `path`'s identity for the result-cache digest. Content rather than
+          # mtime, which git does not preserve: keying on it would let a checkout
+          # discard a persisted cache wholesale. An unreadable path still gets a
+          # stable entry rather than breaking the run.
+          #
+          # @rbs path: String
+          def file_signature: (String path) -> String
+
+          # The cached definition map for one external file, or `nil` when it
+          # cannot be read or parsed — in which case the cop stays conservative
+          # rather than crashing the run.
+          #
+          # @rbs path: String
+          def definitions_for: (String path) -> SharedExampleRegistry::definition_mapping?
+
+          # @rbs path: String
+          def build_definitions_for: (String path) -> SharedExampleRegistry::definition_mapping?
+        end
+      end
+    end
+  end
+end
