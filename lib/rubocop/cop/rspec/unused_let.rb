@@ -117,6 +117,7 @@ module RuboCop
         extend AutoCorrector
 
         include RangeHelp
+        include Matchers
 
         MSG = "`%<helper>s(:%<name>s)` is not referenced anywhere. " \
               "Remove it or reference it in an example."
@@ -179,7 +180,7 @@ module RuboCop
         #
         # @rbs node: RuboCop::AST::Node
         def on_block(node) #: void
-          return unless builder.spec_group?(node)
+          return unless spec_group?(node)
 
           scope = builder.build_from(node)
           mark(scope)
@@ -191,7 +192,7 @@ module RuboCop
         #
         # @rbs node: RuboCop::AST::Node
         def after_block(node) #: void
-          return unless builder.spec_group?(node)
+          return unless spec_group?(node)
 
           scope = stack.pop
           return unless scope

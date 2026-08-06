@@ -6,9 +6,8 @@ module RuboCop
       class UnusedLet < ::RuboCop::Cop::RSpec::Base
         # Turns an example/shared group AST node into a {Scope}, collecting the
         # group's own definitions and references (but not those of nested groups,
-        # which become their own scopes). This is the only part of the cop that
-        # needs RSpec's node-pattern matchers, so it is kept out of both the cop
-        # (RuboCop lifecycle) and {Scope} (pure data and queries).
+        # which become their own scopes). Kept out of both the cop (RuboCop
+        # lifecycle) and {Scope} (pure data and queries).
         class ScopeBuilder
           include Matchers
 
