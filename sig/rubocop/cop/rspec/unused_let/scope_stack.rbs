@@ -1,0 +1,84 @@
+# Generated from lib/rubocop/cop/rspec/unused_let/scope_stack.rb with RBS::Inline
+
+module RuboCop
+  module Cop
+    module RSpec
+      class UnusedLet < ::RuboCop::Cop::RSpec::Base
+        # The cop's traversal state: the scopes currently being descended
+        # into, innermost last. Resolves a scope's references against its
+        # ancestry as it is entered, and reports which of the scopes still on
+        # the stack are shared groups once one is left, so the cop itself is
+        # left with only lifecycle and reporting.
+        class ScopeStack
+          # @rbs check_helper_specs: bool
+          def initialize: (check_helper_specs: bool) -> void
+
+          # Resolve `scope`'s references against its ancestors, then push it
+          # as the new innermost scope.
+          #
+          # @rbs scope: Scope
+          def push: (Scope scope) -> void
+
+          # Pop and return the innermost scope, or `nil` if the stack is
+          # empty.
+          def pop: () -> Scope?
+
+          # The shared blocks among `scope` and the scopes still on the stack
+          # (its ancestors), in no particular order. Call once `scope` itself
+          # has been popped.
+          #
+          # @rbs scope: Scope
+          def shared_groups_for: (Scope scope) -> Array[Scope]
+
+          private
+
+          attr_reader stack: Array[Scope]
+
+          attr_reader check_helper_specs: bool
+
+          # Resolve `scope`'s references against its ancestors and mark every
+          # definition they reach. `scope` is not on the stack yet, so
+          # `stack` is exactly its ancestors.
+          #
+          # @rbs scope: Scope
+          def mark: (Scope scope) -> void
+
+          # A reference made in this group, whether in an example or a helper
+          # body, reaches a `let` defined here or in an enclosing group.
+          #
+          # @rbs scope: Scope
+          def mark_upward: (Scope scope) -> void
+
+          # A helper body in an enclosing group can reference a `let` defined
+          # here, since it runs in the example's scope.
+          #
+          # @rbs scope: Scope
+          def mark_downward: (Scope scope) -> void
+
+          # A helper spec's auto-included module lives in another file and may
+          # reference any `let` in scope, so every definition is treated as
+          # referenced unless `CheckHelperSpecs` opts in. This judgement is
+          # independent of shared inclusions.
+          #
+          # @rbs scope: Scope
+          def ignore_helper_spec?: (Scope scope) -> bool
+
+          # The effective `type:` is the innermost one in the group's
+          # ancestry (each scope already carries its explicit type, or
+          # `:helper` inferred from a `spec/helpers` location).
+          #
+          # @rbs scope: Scope
+          def helper_spec?: (Scope scope) -> bool
+
+          # Treat every `let` visible in `scope` (its own and its ancestors')
+          # as referenced. Used where references can't be fully seen from
+          # this file: a shared inclusion, or a helper spec's auto-included
+          # module.
+          #
+          # @rbs scope: Scope
+          def mark_referenced_all: (Scope scope) -> void
+        end
+      end
+    end
+  end
+end

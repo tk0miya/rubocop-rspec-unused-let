@@ -5,6 +5,7 @@ require_relative "unused_let/matchers"
 require_relative "unused_let/references"
 require_relative "unused_let/scope"
 require_relative "unused_let/scope_builder"
+require_relative "unused_let/scope_stack"
 require_relative "unused_let/shared_example_registry"
 
 module RuboCop
@@ -138,7 +139,7 @@ module RuboCop
 
         def on_new_investigation #: void
           super
-          @stack = []
+          @scope_stack = ScopeStack.new(check_helper_specs: cop_config["CheckHelperSpecs"])
           @builder = ScopeBuilder.new(
             processed_source.file_path,
             SharedExampleRegistry.new(
@@ -157,18 +158,15 @@ module RuboCop
         end
 
         # RuboCop visits nested groups on their own `on_block`, so we never
-        # descend manually. On the way in the ancestors are exactly the scopes
-        # already on the stack, so resolve this group's references against them
-        # now; descendant groups resolve against this one later, as they are
-        # entered.
+        # descend manually: the scope stack resolves this group's references
+        # against its ancestry now, and descendant groups resolve against this
+        # one later, as they are entered.
         #
         # @rbs node: RuboCop::AST::Node
         def on_block(node) #: void
           return unless spec_group?(node)
 
-          scope = builder.build_from(node)
-          mark(scope)
-          stack.push(scope)
+          scope_stack.push(builder.build_from(node))
         end
 
         # A group's `let`s know whether they were referenced once its whole
@@ -178,16 +176,16 @@ module RuboCop
         def after_block(node) #: void
           return unless spec_group?(node)
 
-          scope = stack.pop
+          scope = scope_stack.pop
           return unless scope
 
-          shared_groups = [scope, *stack].select(&:shared?)
+          shared_groups = scope_stack.shared_groups_for(scope)
           report(scope, in_shared_group: shared_groups.any?) if reportable_in?(shared_groups)
         end
 
         private
 
-        attr_reader :stack #: Array[Scope]
+        attr_reader :scope_stack #: ScopeStack
         attr_reader :builder #: ScopeBuilder
 
         # @rbs @external_definitions: ExternalDefinitions?
@@ -201,76 +199,6 @@ module RuboCop
             base_dir: config.base_dir_for_path_parameters,
             target_ruby_version: target_ruby_version
           )
-        end
-
-        # Resolve `scope`'s references against the enclosing groups (the scopes
-        # currently on the stack) and mark every definition they reach.
-        #
-        # @rbs scope: Scope
-        def mark(scope) #: void
-          ancestors = stack
-          mark_upward(scope, ancestors)
-          mark_downward(scope, ancestors)
-          mark_referenced_all(scope, ancestors) if scope.inclusion
-          mark_referenced_all(scope, ancestors) if ignore_helper_spec?(scope, ancestors)
-        end
-
-        # A reference made in this group, whether in an example or a helper body,
-        # reaches a `let` defined here or in an enclosing group.
-        #
-        # @rbs scope: Scope
-        # @rbs ancestors: Array[Scope]
-        def mark_upward(scope, ancestors) #: void
-          (scope.refs | scope.refs_in_example).each do |name|
-            scope.mark_referenced(name)
-            ancestors.each { _1.mark_referenced(name) }
-          end
-        end
-
-        # A helper body in an enclosing group can reference a `let` defined here,
-        # since it runs in the example's scope.
-        #
-        # @rbs scope: Scope
-        # @rbs ancestors: Array[Scope]
-        def mark_downward(scope, ancestors) #: void
-          scope.defined_names.each do |name|
-            scope.mark_referenced(name) if ancestors.any? { _1.refs.include?(name) }
-          end
-        end
-
-        # A helper spec's auto-included module lives in another file and may
-        # reference any `let` in scope, so every definition is treated as
-        # referenced unless `CheckHelperSpecs` opts in. This judgement is
-        # independent of shared inclusions.
-        #
-        # @rbs scope: Scope
-        # @rbs ancestors: Array[Scope]
-        def ignore_helper_spec?(scope, ancestors) #: bool
-          return false if cop_config["CheckHelperSpecs"]
-
-          helper_spec?(scope, ancestors)
-        end
-
-        # The effective `type:` is the innermost one in the group's ancestry
-        # (each scope already carries its explicit type, or `:helper` inferred
-        # from a `spec/helpers` location).
-        #
-        # @rbs scope: Scope
-        # @rbs ancestors: Array[Scope]
-        def helper_spec?(scope, ancestors) #: bool
-          [scope, *ancestors].filter_map(&:type).first == :helper
-        end
-
-        # Treat every `let` visible in `scope` (its own and its ancestors') as
-        # referenced. Used where references can't be fully seen from this file:
-        # a shared inclusion, or a helper spec's auto-included module.
-        #
-        # @rbs scope: Scope
-        # @rbs ancestors: Array[Scope]
-        def mark_referenced_all(scope, ancestors) #: void
-          [scope, *ancestors].each do |group|
-            group.defined_names.each { group.mark_referenced(_1) }
-          end
         end
 
         # Whether a group enclosed by `shared_groups` (the shared blocks among it
