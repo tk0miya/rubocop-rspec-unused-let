@@ -8,11 +8,13 @@ Gem::Specification.new do |spec|
   spec.authors = ["Takeshi KOMIYA"]
   spec.email = ["i.tkomiya@gmail.com"]
 
-  spec.summary = "A RuboCop cop that detects unreferenced RSpec `let` definitions."
+  spec.summary = "A RuboCop cop that detects unreferenced RSpec `let`/`subject` definitions and helper methods."
   spec.description = "rubocop-rspec-unused-let adds the RSpec/UnusedLet cop, which " \
-                     "flags `let` (and optionally `let!`) definitions that are never " \
-                     "referenced within their scope, while staying conservative around " \
-                     "shared_examples to avoid false positives."
+                     "flags `let` (and optionally `let!`) definitions, `subject` " \
+                     "definitions and helper methods (`def`) that are never referenced " \
+                     "within their scope. It resolves `shared_examples` precisely when it " \
+                     "can see the shared block, and stays conservative otherwise to avoid " \
+                     "false positives."
   spec.homepage = "https://github.com/tk0miya/rubocop-rspec-unused-let"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 2.7.0"

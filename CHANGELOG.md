@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-08
+
 - `RSpec/UnusedLet` now also flags `subject`/`subject!` definitions that
   nothing references. A subject answers to two names: its own, when it has
   one, and the implicit `subject`, which RSpec's one-liner syntax
