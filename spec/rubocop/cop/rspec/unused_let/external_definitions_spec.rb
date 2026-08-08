@@ -93,12 +93,16 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ExternalDefinitions do
     end
 
     context "when a pre-loaded path cannot be read" do
+      subject { [build.checksum, build.checksum] }
+
       # A directory the pattern matches: globbed like a file, but unreadable.
       before { Dir.mkdir(File.join(support_dir, "a_directory.rb")) }
 
       it "still counts it in, with a stable entry" do
-        expect(subject).not_to eq(baseline)
-        expect(build.checksum).to eq(subject)
+        digest, reread = subject
+
+        expect(digest).not_to eq(baseline)
+        expect(reread).to eq(digest)
       end
     end
 
@@ -110,10 +114,10 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ExternalDefinitions do
   end
 
   describe "#definitions" do
-    subject { build(cache: cache).definitions(excluding: excluding) }
+    subject { external_definitions.definitions(excluding: excluding) }
 
-    let(:cache) { {} }
     let(:excluding) { nil }
+    let(:external_definitions) { build }
     let(:shared_file) { File.join(support_dir, "shared.rb") }
 
     before do
@@ -145,27 +149,28 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ExternalDefinitions do
     end
 
     context "when the same file backs many calls" do
-      it "parses and indexes it once, reusing the cache" do
-        external_definitions = build(cache: cache)
-        allow(RuboCop::AST::ProcessedSource).to receive(:from_file).and_call_original
+      subject { 3.times { external_definitions.definitions(excluding: excluding) } }
 
-        3.times { external_definitions.definitions(excluding: nil) }
+      before { allow(RuboCop::AST::ProcessedSource).to receive(:from_file).and_call_original }
+
+      it "parses and indexes it once, reusing the cache" do
+        subject
 
         expect(RuboCop::AST::ProcessedSource).to have_received(:from_file).once
       end
     end
 
     context "when a pre-loaded file is rewritten under its old mtime" do
-      it "notices the rewrite and re-parses it" do
-        mtime = File.mtime(shared_file)
-        external_definitions = build(cache: cache)
-        external_definitions.definitions(excluding: nil)
+      before do
+        original_mtime = File.mtime(shared_file)
+        external_definitions.definitions(excluding: excluding) # prime the cache
         File.write(shared_file, "#{File.read(shared_file)}# a comment that makes the file longer\n")
-        File.utime(mtime, mtime, shared_file)
-        expect(File.mtime(shared_file)).to eq(mtime) # only the size gives the rewrite away
+        File.utime(original_mtime, original_mtime, shared_file) # only the size gives the rewrite away
         allow(RuboCop::AST::ProcessedSource).to receive(:from_file).and_call_original
+      end
 
-        external_definitions.definitions(excluding: nil)
+      it "notices the rewrite and re-parses it" do
+        subject
 
         expect(RuboCop::AST::ProcessedSource).to have_received(:from_file).once
       end
