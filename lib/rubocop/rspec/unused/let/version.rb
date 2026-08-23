@@ -4,7 +4,7 @@ module Rubocop
   module Rspec
     module Unused
       module Let
-        VERSION = "1.2.0"
+        VERSION = "1.3.0"
       end
     end
   end
