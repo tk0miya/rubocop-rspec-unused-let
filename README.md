@@ -336,11 +336,12 @@ RSpec/UnusedLet:
 
 ## Known-gem support
 
-Some gems ship a shared context that dereferences `let` names dynamically
-(e.g. via `eval`), so a single-file static analysis cannot see the
-references. When the cop recognizes such a gem by the `type:` metadata on
-an example group (or one of its ancestors), it treats the affected `let`
-names as used automatically.
+Some gems ship a shared context that references `let` names in a way a
+single-file static analysis cannot see — dereferenced dynamically (e.g. via
+`eval`), or referenced from the gem's own code. When the cop recognizes such a
+gem by the metadata on an example group (or one of its ancestors), it treats
+the affected `let` names as used automatically. The metadata is a `type:` or a
+bare symbol, whichever the gem keys its shared context on.
 
 Currently supported:
 
@@ -353,6 +354,20 @@ Currently supported:
 RSpec.describe JsonFormatValidator, type: :validator do
   let(:value) { "String" }   # not flagged
   it { is_expected.to be_invalid }
+end
+```
+
+- RuboCop's own cop spec support (`require "rubocop/rspec/support"`) — groups
+  carrying the bare symbol `:config` may define `let(:cop_config)`,
+  `let(:config)`, `let(:cop_class)`, `let(:source)`, `let(:ruby_version)` (and
+  the `config` shared context's and `CopHelper`'s other overridable lets)
+  without being flagged. Only the bare symbol counts here; `type: :config` is
+  different metadata and is not recognized.
+
+```ruby
+RSpec.describe RuboCop::Cop::Style::MyCop, :config do
+  let(:cop_config) { { "Max" => 1 } }   # not flagged
+  it { expect_no_offenses("x = 1") }
 end
 ```
 
@@ -380,6 +395,12 @@ end
   mixed into the example group) or through a name that is not statically known
   (`send(attribute)`) can be a false positive. The cases the sections above
   cover are deliberately left unflagged instead.
+- Metadata that pulls a shared context in through `RSpec.configure`
+  (`config.include_context "name", :meta`) is not read: the mapping lives in
+  another file, so a `let` that only such a shared context references is a
+  false positive. An explicit `include_context`/`include_examples` written in
+  the spec is resolved as above; the gems under
+  [Known-gem support](#known-gem-support) are recognized one by one instead.
 - The override an inline inclusion allows is matched approximately: it can flag
   a `let` the shared block does use through a further inclusion of its own, and
   leave one alone that RSpec would in fact render dead — a `let` written before

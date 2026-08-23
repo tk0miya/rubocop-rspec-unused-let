@@ -495,6 +495,55 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
       end
     end
 
+    context "when the group carries the `:config` tag" do
+      let(:source) { <<~RUBY }
+        describe "target", :config do
+        end
+      RUBY
+
+      it "records RuboCop's cop spec names as example and helper references" do
+        expect(subject.tags).to eq(%i[config])
+        expect(subject.refs_in_example).to include(:cop_config, :config, :ruby_version)
+        expect(subject.refs).to include(:cop_config, :config, :ruby_version)
+      end
+    end
+
+    context "when the group carries the `:config` tag alongside other tags" do
+      let(:source) { <<~RUBY }
+        describe "target", :config, :restore_registry do
+        end
+      RUBY
+
+      it "still records the names the recognized tag stands for" do
+        expect(subject.tags).to eq(%i[config restore_registry])
+        expect(subject.refs_in_example).to include(:cop_config)
+      end
+    end
+
+    context "when the group carries an unrecognized tag" do
+      let(:source) { <<~RUBY }
+        describe "target", :aggregate_failures do
+        end
+      RUBY
+
+      it "injects nothing" do
+        expect(subject.tags).to eq(%i[aggregate_failures])
+        expect(subject.refs_in_example).not_to include(:cop_config)
+      end
+    end
+
+    context "when the `type:` shares its name with a recognized tag" do
+      let(:source) { <<~RUBY }
+        describe "target", type: :config do
+        end
+      RUBY
+
+      it "keeps the two namespaces apart, injecting nothing for the `type:`" do
+        expect(subject.tags).to be_empty
+        expect(subject.refs_in_example).not_to include(:cop_config)
+      end
+    end
+
     context "when the spec file sits under `spec/helpers`" do
       let(:spec_filename) { "spec/helpers/my_helper_spec.rb" }
 

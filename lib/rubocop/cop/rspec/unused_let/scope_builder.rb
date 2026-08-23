@@ -35,6 +35,24 @@ module RuboCop
             ].freeze
           }.freeze
 
+          # The same, keyed by a bare symbol an example group carries as
+          # metadata (an RSpec tag) instead of by its `type:`. A tag and a
+          # `type:` of the same name are different metadata, so the two maps
+          # stay apart.
+          IMPLICIT_REFS_BY_TAG = {
+            # RuboCop's own cop spec support
+            # https://github.com/rubocop/rubocop/blob/master/lib/rubocop/rspec/support.rb
+            # Requiring it maps the `:config` tag to the `config` shared
+            # context, whose `let`s a cop spec overrides, and unconditionally
+            # includes `CopHelper`, whose `let`s it overrides too. Only the tag
+            # is visible from the spec file, so it stands in for both.
+            config: %i[
+              cop_class cop_config other_cops cop_options gem_versions
+              processed_source source_buffer all_cops_config cur_cop_config config cop
+              source ruby_version parser_engine rails_version
+            ].freeze
+          }.freeze
+
           # @rbs spec_filename: String?
           # @rbs registry: SharedExampleRegistry
           def initialize(spec_filename, registry) #: void
@@ -49,7 +67,8 @@ module RuboCop
           def build_from(node) #: Scope
             kind = example_group?(node) ? :example : :shared #: Scope::kind
             type = type_from_group(node) || type_from_filename(spec_filename)
-            scope = Scope.new(node: node, kind: kind, type: type, carries_examples: carries_examples?(node))
+            scope = Scope.new(node: node, kind: kind, type: type, tags: tags_from_group(node),
+                              carries_examples: carries_examples?(node))
             helpers = helper_nodes(node)
             collect_definitions(node, scope)
             helpers.each { record_helper_references(_1, scope) }
@@ -63,8 +82,9 @@ module RuboCop
           attr_reader :spec_filename #: String?
           attr_reader :registry #: SharedExampleRegistry
 
-          # A well-known gem's shared context (pulled in by `type:` metadata)
-          # can reference `let` names that single-file analysis never sees.
+          # A well-known gem's shared context (pulled in by `type:` metadata
+          # or by a tag) can reference `let` names that single-file analysis
+          # never sees.
           # Record them exactly as a real helper on this group would be: an
           # example reference (justifying a `let` here or in an ancestor) *and* a
           # helper reference (reaching `let`s in descendant groups, since helper
@@ -72,13 +92,17 @@ module RuboCop
           #
           # @rbs scope: Scope
           def inject_implicit_references(scope) #: void
-            names = scope.type && IMPLICIT_REFS_BY_TYPE[scope.type]
-            return unless names
-
-            names.each do |name|
+            implicit_reference_names(scope).each do |name|
               scope.add_reference_in_example(name)
               scope.add_reference(name)
             end
+          end
+
+          # @rbs scope: Scope
+          def implicit_reference_names(scope) #: Array[Symbol]
+            by_type = IMPLICIT_REFS_BY_TYPE[scope.type] || []
+            by_tag = scope.tags.flat_map { IMPLICIT_REFS_BY_TAG[_1] || [] }
+            by_type + by_tag
           end
 
           # @rbs node: RuboCop::AST::Node
@@ -250,6 +274,22 @@ module RuboCop
               end
             end
             nil
+          end
+
+          # The bare symbols an example group carries as metadata. The first
+          # argument is skipped: a symbol there is the group's description
+          # (`describe :config do`), not a tag.
+          #
+          # RSpec itself reads only the symbols trailing the argument list (a
+          # trailing hash aside), so `describe X, :config, "extra"` leaves
+          # `:config` in the description. Reading every symbol past the first
+          # over-collects there, which errs toward leaving a `let` alone rather
+          # than flagging one wrongly.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def tags_from_group(node) #: Array[Symbol]
+            block = node #: untyped
+            block.send_node.arguments.drop(1).select(&:sym_type?).map(&:value)
           end
 
           # rspec-rails infers a spec's `type:` from its location when none is

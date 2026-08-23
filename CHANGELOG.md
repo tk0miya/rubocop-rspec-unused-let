@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+- `RSpec/UnusedLet` now recognizes RuboCop's own cop spec support
+  (`require "rubocop/rspec/support"`): a group carrying the bare symbol
+  `:config` may override the `config` shared context's and `CopHelper`'s
+  `let`s — `cop_config`, `config`, `cop_class`, `source`, `ruby_version` and
+  the rest — without being flagged.
+
 ## [1.2.0] - 2026-08-08
 
 - `RSpec/UnusedLet` now also flags `subject`/`subject!` definitions that
