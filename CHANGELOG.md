@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [1.3.0] - 2026-08-23
+
 - `RSpec/UnusedLet` now recognizes RuboCop's own cop spec support
   (`require "rubocop/rspec/support"`): a group carrying the bare symbol
   `:config` may override the `config` shared context's and `CopHelper`'s
