@@ -77,14 +77,36 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         end
       end
 
-      context "when a known gem's `type:` metadata does not apply" do
-        it "flags `let(:value)` when the metadata is a different type" do
+      context "when a known gem's metadata does not apply" do
+        it "flags `let(:value)` when the `type:` is a different one" do
           expect_offense(<<~RUBY)
             RSpec.describe JsonFormatValidator, type: :model do
               let(:value) { "String" }
               ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
 
               it { is_expected.to be_invalid }
+            end
+          RUBY
+        end
+
+        it "flags `let(:cop_config)` when the `:config` tag is absent" do
+          expect_offense(<<~RUBY)
+            RSpec.describe RuboCop::Cop::Style::Foo do
+              let(:cop_config) { { "Max" => 1 } }
+              ^^^^^^^^^^^^^^^^ `let(:cop_config)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { expect_no_offenses("x = 1") }
+            end
+          RUBY
+        end
+
+        it "flags `let(:cop_config)` when the symbol is the description, not a tag" do
+          expect_offense(<<~RUBY)
+            RSpec.describe :config do
+              let(:cop_config) { { "Max" => 1 } }
+              ^^^^^^^^^^^^^^^^ `let(:cop_config)` is not referenced anywhere. Remove it or reference it in an example.
+
+              it { expect_no_offenses("x = 1") }
             end
           RUBY
         end
@@ -350,6 +372,65 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
                 ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
 
                 it { is_expected.to be_invalid }
+              end
+            RUBY
+          end
+        end
+      end
+
+      context "when the `:config` tag (RuboCop's own cop spec support) is in scope" do
+        context "when a name is overridden on the tagged group" do
+          it "ignores it" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe RuboCop::Cop::Style::Foo, :config do
+                let(:cop_config) { { "Max" => 1 } }
+
+                it { expect_no_offenses("x = 1") }
+              end
+            RUBY
+          end
+        end
+
+        context "when a name is overridden in a nested context" do
+          it "ignores it" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe RuboCop::Cop::Style::Foo, :config do
+                describe "#on_send" do
+                  context "with a mode set" do
+                    let(:config) { RuboCop::Config.new }
+                    let(:ruby_version) { 3.4 }
+
+                    it { expect_no_offenses("x = 1") }
+                  end
+                end
+              end
+            RUBY
+          end
+        end
+
+        # The `:config, :restore_registry` form is what RuboCop's own specs
+        # write, so it is pinned end to end here too.
+        context "when other tags accompany it" do
+          it "ignores the names it stands for" do
+            expect_no_offenses(<<~RUBY)
+              RSpec.describe RuboCop::Cop::Style::Foo, :config, :restore_registry do
+                let(:cop_config) { { "Max" => 1 } }
+
+                it { expect_no_offenses("x = 1") }
+              end
+            RUBY
+          end
+        end
+
+        context "when a let's name is not one the shared context defines" do
+          it "still flags it" do
+            expect_offense(<<~RUBY)
+              RSpec.describe RuboCop::Cop::Style::Foo, :config do
+                let(:cop_config) { { "Max" => 1 } }
+                let(:unused) { 1 }
+                ^^^^^^^^^^^^ `let(:unused)` is not referenced anywhere. Remove it or reference it in an example.
+
+                it { expect_no_offenses("x = 1") }
               end
             RUBY
           end

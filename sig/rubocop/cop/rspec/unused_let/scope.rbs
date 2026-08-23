@@ -53,13 +53,16 @@ module RuboCop
 
           attr_reader type: Symbol?
 
+          attr_reader tags: Array[Symbol]
+
           attr_reader resolved: Set[Symbol]
 
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
           # @rbs type: Symbol?
+          # @rbs tags: Array[Symbol]
           # @rbs carries_examples: bool
-          def initialize: (node: RuboCop::AST::Node, kind: kind, ?type: Symbol?, ?carries_examples: bool) -> void
+          def initialize: (node: RuboCop::AST::Node, kind: kind, ?type: Symbol?, ?tags: Array[Symbol], ?carries_examples: bool) -> void
 
           # @rbs helper: Symbol
           # @rbs name: Symbol?

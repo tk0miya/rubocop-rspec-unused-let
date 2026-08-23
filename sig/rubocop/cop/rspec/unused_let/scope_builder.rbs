@@ -23,6 +23,12 @@ module RuboCop
           # that `let`s of those names (here or in a descendant) count as used.
           IMPLICIT_REFS_BY_TYPE: untyped
 
+          # The same, keyed by a bare symbol an example group carries as
+          # metadata (an RSpec tag) instead of by its `type:`. A tag and a
+          # `type:` of the same name are different metadata, so the two maps
+          # stay apart.
+          IMPLICIT_REFS_BY_TAG: untyped
+
           # @rbs spec_filename: String?
           # @rbs registry: SharedExampleRegistry
           def initialize: (String? spec_filename, SharedExampleRegistry registry) -> void
@@ -39,8 +45,9 @@ module RuboCop
 
           attr_reader registry: SharedExampleRegistry
 
-          # A well-known gem's shared context (pulled in by `type:` metadata)
-          # can reference `let` names that single-file analysis never sees.
+          # A well-known gem's shared context (pulled in by `type:` metadata
+          # or by a tag) can reference `let` names that single-file analysis
+          # never sees.
           # Record them exactly as a real helper on this group would be: an
           # example reference (justifying a `let` here or in an ancestor) *and* a
           # helper reference (reaching `let`s in descendant groups, since helper
@@ -48,6 +55,9 @@ module RuboCop
           #
           # @rbs scope: Scope
           def inject_implicit_references: (Scope scope) -> void
+
+          # @rbs scope: Scope
+          def implicit_reference_names: (Scope scope) -> Array[Symbol]
 
           # @rbs node: RuboCop::AST::Node
           # @rbs scope: Scope
@@ -148,6 +158,19 @@ module RuboCop
 
           # @rbs node: RuboCop::AST::Node
           def type_from_group: (RuboCop::AST::Node node) -> Symbol?
+
+          # The bare symbols an example group carries as metadata. The first
+          # argument is skipped: a symbol there is the group's description
+          # (`describe :config do`), not a tag.
+          #
+          # RSpec itself reads only the symbols trailing the argument list (a
+          # trailing hash aside), so `describe X, :config, "extra"` leaves
+          # `:config` in the description. Reading every symbol past the first
+          # over-collects there, which errs toward leaving a `let` alone rather
+          # than flagging one wrongly.
+          #
+          # @rbs node: RuboCop::AST::Node
+          def tags_from_group: (RuboCop::AST::Node node) -> Array[Symbol]
 
           # rspec-rails infers a spec's `type:` from its location when none is
           # set explicitly. Only `:helper` is inferred here, the one type the

@@ -52,13 +52,15 @@ module RuboCop
           attr_reader :refs_in_example #: Set[Symbol] -- names referenced outside this group's helper bodies
           attr_reader :inclusion #: bool -- whether this group pulls in a shared example group
           attr_reader :type #: Symbol? -- this group's `type:`, explicit or inferred from the spec's location
+          attr_reader :tags #: Array[Symbol] -- the bare symbols this group carries as metadata, e.g. `:config`
           attr_reader :resolved #: Set[Symbol] -- names of this group's definitions resolved to a reference
 
           # @rbs node: RuboCop::AST::Node
           # @rbs kind: kind
           # @rbs type: Symbol?
+          # @rbs tags: Array[Symbol]
           # @rbs carries_examples: bool
-          def initialize(node:, kind:, type: nil, carries_examples: false) #: void
+          def initialize(node:, kind:, type: nil, tags: [], carries_examples: false) #: void
             @node = node
             @kind = kind
             @defs = []
@@ -66,6 +68,7 @@ module RuboCop
             @refs_in_example = Set.new
             @inclusion = false
             @type = type
+            @tags = tags
             @resolved = Set.new
             @carries_examples = carries_examples
           end
