@@ -78,37 +78,43 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
       end
 
       context "when a known gem's metadata does not apply" do
-        it "flags `let(:value)` when the `type:` is a different one" do
-          expect_offense(<<~RUBY)
-            RSpec.describe JsonFormatValidator, type: :model do
-              let(:value) { "String" }
-              ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
+        context "when the `type:` is a different one" do
+          it "flags `let(:value)`" do
+            expect_offense(<<~RUBY)
+              RSpec.describe JsonFormatValidator, type: :model do
+                let(:value) { "String" }
+                ^^^^^^^^^^^ `let(:value)` is not referenced anywhere. Remove it or reference it in an example.
 
-              it { is_expected.to be_invalid }
-            end
-          RUBY
+                it { is_expected.to be_invalid }
+              end
+            RUBY
+          end
         end
 
-        it "flags `let(:cop_config)` when the `:config` tag is absent" do
-          expect_offense(<<~RUBY)
-            RSpec.describe RuboCop::Cop::Style::Foo do
-              let(:cop_config) { { "Max" => 1 } }
-              ^^^^^^^^^^^^^^^^ `let(:cop_config)` is not referenced anywhere. Remove it or reference it in an example.
+        context "when the `:config` tag is absent" do
+          it "flags `let(:cop_config)`" do
+            expect_offense(<<~RUBY)
+              RSpec.describe RuboCop::Cop::Style::Foo do
+                let(:cop_config) { { "Max" => 1 } }
+                ^^^^^^^^^^^^^^^^ `let(:cop_config)` is not referenced anywhere. Remove it or reference it in an example.
 
-              it { expect_no_offenses("x = 1") }
-            end
-          RUBY
+                it { expect_no_offenses("x = 1") }
+              end
+            RUBY
+          end
         end
 
-        it "flags `let(:cop_config)` when the symbol is the description, not a tag" do
-          expect_offense(<<~RUBY)
-            RSpec.describe :config do
-              let(:cop_config) { { "Max" => 1 } }
-              ^^^^^^^^^^^^^^^^ `let(:cop_config)` is not referenced anywhere. Remove it or reference it in an example.
+        context "when the symbol is the description, not a tag" do
+          it "flags `let(:cop_config)`" do
+            expect_offense(<<~RUBY)
+              RSpec.describe :config do
+                let(:cop_config) { { "Max" => 1 } }
+                ^^^^^^^^^^^^^^^^ `let(:cop_config)` is not referenced anywhere. Remove it or reference it in an example.
 
-              it { expect_no_offenses("x = 1") }
-            end
-          RUBY
+                it { expect_no_offenses("x = 1") }
+              end
+            RUBY
+          end
         end
       end
     end
@@ -1088,16 +1094,14 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     end
 
     context "when referenced" do
-      context "with the one-liner `is_expected`" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              subject { described_class.new }
+      it "does not flag it with the one-liner `is_expected`" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            subject { described_class.new }
 
-              it { is_expected.to be_valid }
-            end
-          RUBY
-        end
+            it { is_expected.to be_valid }
+          end
+        RUBY
       end
     end
 
@@ -1378,18 +1382,16 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     end
 
     context "when referenced" do
-      context "when the reference is in an example" do
-        it "does not flag it" do
-          expect_no_offenses(<<~RUBY)
-            RSpec.describe Foo do
-              def value
-                1
-              end
-
-              it { expect(value).to eq(1) }
+      it "does not flag it when the reference is in an example" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            def value
+              1
             end
-          RUBY
-        end
+
+            it { expect(value).to eq(1) }
+          end
+        RUBY
       end
     end
 
