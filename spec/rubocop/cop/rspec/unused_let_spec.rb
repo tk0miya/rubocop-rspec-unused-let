@@ -1094,14 +1094,30 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     end
 
     context "when referenced" do
-      it "does not flag it with the one-liner `is_expected`" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            subject { described_class.new }
+      context "with the one-liner `is_expected`" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new }
 
-            it { is_expected.to be_valid }
-          end
-        RUBY
+              it { is_expected.to be_valid }
+            end
+          RUBY
+        end
+      end
+
+      context "when the reference is in a nested example group" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              subject { described_class.new }
+
+              context "when nested" do
+                it { is_expected.to be_valid }
+              end
+            end
+          RUBY
+        end
       end
     end
 
@@ -1382,16 +1398,34 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
     end
 
     context "when referenced" do
-      it "does not flag it when the reference is in an example" do
-        expect_no_offenses(<<~RUBY)
-          RSpec.describe Foo do
-            def value
-              1
-            end
+      context "when the reference is in an example" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              def value
+                1
+              end
 
-            it { expect(value).to eq(1) }
-          end
-        RUBY
+              it { expect(value).to eq(1) }
+            end
+          RUBY
+        end
+      end
+
+      context "when the reference is in a nested example group" do
+        it "does not flag it" do
+          expect_no_offenses(<<~RUBY)
+            RSpec.describe Foo do
+              def value
+                1
+              end
+
+              context "when nested" do
+                it { expect(value).to eq(1) }
+              end
+            end
+          RUBY
+        end
       end
     end
 
