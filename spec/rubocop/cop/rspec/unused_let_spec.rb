@@ -1009,6 +1009,18 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         end
       end
     end
+
+    context "when referenced" do
+      it "does not flag it" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            let!(:widget) { create(:widget) }
+
+            it { expect(widget.count).to eq(1) }
+          end
+        RUBY
+      end
+    end
   end
 
   context "with subject" do
@@ -1348,6 +1360,18 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
             end
           RUBY
         end
+      end
+    end
+
+    context "when referenced" do
+      it "does not flag it" do
+        expect_no_offenses(<<~RUBY)
+          RSpec.describe Foo do
+            subject! { create(:widget) }
+
+            it { is_expected.to be_valid }
+          end
+        RUBY
       end
     end
   end
