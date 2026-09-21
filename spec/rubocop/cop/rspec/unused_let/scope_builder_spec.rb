@@ -383,7 +383,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet::ScopeBuilder do
         end
       RUBY
 
-      it "still records it as a helper reference, in case the block runs in the example's scope" do
+      it "still records it as a helper reference" do
         expect(subject.refs).to include(:value)
       end
     end
