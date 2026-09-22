@@ -1067,7 +1067,7 @@ RSpec.describe RuboCop::Cop::RSpec::UnusedLet, :config do
         end
 
         context "when only a same-named `let` is referenced elsewhere" do
-          it "flags the subject in the group that never uses it" do
+          it "flags the subject" do
             expect_offense(<<~RUBY)
               RSpec.describe Foo do
                 context "one" do
